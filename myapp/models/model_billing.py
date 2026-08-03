@@ -26,6 +26,7 @@ class Bill(Model, MyappModelBase):
     cpu = Column(Float, default=0)                                # cpu核数
     memory = Column(Float, default=0)                             # 内存GB
     gpu_num = Column(Float, default=0)                            # gpu卡数
+    gpu_type = Column(String(50), default='')                     # GPU 型号（A40/L20/...），定价按型号
     gpu_memory = Column(Float, default=0)                         # 显存GB
     duration_seconds = Column(Integer, default=0)                 # 运行时间（秒）
     amount_fen = Column(Integer, default=0)                       # 费用（分）
@@ -62,6 +63,24 @@ class Wallet(Model, MyappModelBase):
 
     def __repr__(self):
         return '%s:%s' % (self.user_id, self.balance_fen)
+
+
+# GPU 型号价格：按显卡型号定价（元/卡/月），如 A40 / L20 / A100 / H100
+class GpuPrice(Model, MyappModelBase):
+    __tablename__ = 'gpu_price'
+    id = Column(Integer, primary_key=True)
+    gpu_type = Column(String(50), nullable=False, unique=True)    # 显卡型号，如 A40 / L20
+    price_fen = Column(Integer, default=0)                        # 每卡每月价格（分）
+    unit = Column(String(50), default='元/卡/月')
+    updated_by = Column(String(100), default='')
+    updated_on = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    @property
+    def price_yuan(self):
+        return round(self.price_fen / 100.0, 4) if self.price_fen else 0
+
+    def __repr__(self):
+        return '%s:%s' % (self.gpu_type, self.price_fen)
 
 
 # 计费标准（资源单价）：cpu / memory / gpu_memory，单位价格按"每小时"

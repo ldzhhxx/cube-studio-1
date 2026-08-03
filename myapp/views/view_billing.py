@@ -21,7 +21,7 @@ from flask import request, g, flash, redirect, jsonify, send_from_directory, Res
 from sqlalchemy.exc import IntegrityError
 
 from myapp import app, appbuilder, db, conf
-from myapp.models.model_billing import Bill, Wallet, AccountLog, PriceConfig
+from myapp.models.model_billing import Bill, Wallet, AccountLog, PriceConfig, GpuPrice
 from myapp.security import MyUser
 
 logging = app.logger
@@ -191,6 +191,7 @@ def billing_push():
                 cpu=safe_float(item.get('cpu')),
                 memory=safe_float(item.get('memory')),
                 gpu_num=safe_float(item.get('gpu_num')),
+                gpu_type=str(item.get('gpu_type', '') or '').strip()[:50],
                 gpu_memory=safe_float(item.get('gpu_memory')),
                 duration_seconds=safe_int(item.get('duration_seconds')),
                 amount_fen=amount_fen,
@@ -308,6 +309,7 @@ def billing_list():
         'cpu': b.cpu,
         'memory': b.memory,
         'gpu_num': b.gpu_num,
+        'gpu_type': b.gpu_type or '',
         'gpu_memory': b.gpu_memory,
         'duration_seconds': b.duration_seconds,
         'amount_fen': b.amount_fen,
@@ -429,6 +431,7 @@ def _do_deduct(item):
     cpu = safe_float(item.get('cpu'))
     memory = safe_float(item.get('memory'))
     gpu_num = safe_float(item.get('gpu_num'))
+    gpu_type = str(item.get('gpu_type', '') or '').strip()[:50]
     gpu_memory = safe_float(item.get('gpu_memory'))
     duration_seconds = safe_int(item.get('duration_seconds'))
     if not username or amount_fen <= 0:
@@ -446,7 +449,7 @@ def _do_deduct(item):
         raise ValueError('pod_name %s already exists, use another pod_name' % pod_name)
     bill = Bill(pod_name=pod_name, username=user.username, user_id=user.id, org=user.org,
                 task_name=task_name, amount_fen=amount_fen, status='settled', source='manual',
-                cpu=cpu, memory=memory, gpu_num=gpu_num, gpu_memory=gpu_memory,
+                cpu=cpu, memory=memory, gpu_num=gpu_num, gpu_type=gpu_type, gpu_memory=gpu_memory,
                 duration_seconds=duration_seconds)
     db.session.add(bill)
     db.session.flush()
@@ -461,7 +464,7 @@ def _do_deduct(item):
     db.session.commit()
     return {
         'username': username, 'amount_fen': amount_fen, 'balance_fen': wallet.balance_fen,
-        'cpu': cpu, 'memory': memory, 'gpu_num': gpu_num, 'gpu_memory': gpu_memory,
+        'cpu': cpu, 'memory': memory, 'gpu_num': gpu_num, 'gpu_type': gpu_type, 'gpu_memory': gpu_memory,
         'duration_seconds': duration_seconds, 'result': 'settled',
     }
 
@@ -580,28 +583,43 @@ def _price_dict(p):
     }
 
 
+def _gpu_dict(p):
+    return {
+        'gpu_type': p.gpu_type,
+        'price_fen': p.price_fen or 0,
+        'price_yuan': round((p.price_fen or 0) / 100.0, 4),
+        'unit': p.unit or '元/卡/月',
+        'updated_by': p.updated_by or '',
+        'updated_on': p.updated_on.strftime('%Y-%m-%d %H:%M:%S') if p.updated_on else '',
+    }
+
+
+def _all_prices():
+    prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
+    gpus = db.session.query(GpuPrice).order_by(GpuPrice.price_fen.desc()).all()
+    return {'prices': [_price_dict(p) for p in prices], 'gpu': [_gpu_dict(p) for p in gpus]}
+
+
 @app.route('/billing/api/prices', methods=['GET'])
 def billing_prices():
     """计费标准查询（所有登录用户可见，普通用户在我的账单页查看）"""
     if not g.user or not g.user.is_authenticated:
         return err_response('please login', 401)
-    prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
-    return ok_response({'prices': [_price_dict(p) for p in prices]})
+    return ok_response(_all_prices())
 
 
 @app.route('/billing/api/admin/prices', methods=['GET', 'POST'])
 def billing_admin_prices():
-    """计费标准管理：GET 查询；POST 管理员修改价格（分/单位/小时）"""
+    """计费标准管理：GET 查询；POST 管理员修改 CPU/内存价格（分/单位/月）"""
     if not check_admin_or_token():
         return err_response('no permission', 401)
     if request.method == 'GET':
-        prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
-        return ok_response({'prices': [_price_dict(p) for p in prices]})
+        return ok_response(_all_prices())
     if not require_json_content():
         return err_response('Content-Type must be application/json', 415)
     data = request.get_json(force=True, silent=True) or {}
     updated = []
-    for rtype in ('cpu', 'memory', 'gpu_memory'):
+    for rtype in ('cpu', 'memory'):
         if rtype not in data:
             continue
         price = safe_int(data.get(rtype))
@@ -609,14 +627,45 @@ def billing_admin_prices():
             return err_response('%s price invalid (0~%s)' % (rtype, MAX_TRANSFER_FEN))
         p = db.session.query(PriceConfig).filter_by(resource_type=rtype).first()
         if not p:
-            p = PriceConfig(resource_type=rtype, unit='元/单位/小时')
+            p = PriceConfig(resource_type=rtype, unit='元/单位/月')
             db.session.add(p)
         p.price_fen = price
         p.updated_by = current_operator()
         updated.append(rtype)
     db.session.commit()
-    prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
-    return ok_response({'updated': updated, 'prices': [_price_dict(p) for p in prices]})
+    return ok_response({'updated': updated, **_all_prices()})
+
+
+@app.route('/billing/api/admin/gpu_prices', methods=['POST', 'DELETE'])
+def billing_admin_gpu_prices():
+    """GPU 型号价格管理：POST 新增/修改 {gpu_type, price_fen}；DELETE ?gpu_type= 删除型号"""
+    if not check_admin_or_token():
+        return err_response('no permission', 401)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    if request.method == 'DELETE':
+        gpu_type = (request.args.get('gpu_type', '') or '').strip()
+        p = db.session.query(GpuPrice).filter_by(gpu_type=gpu_type).first()
+        if not p:
+            return err_response('gpu type %s not found' % gpu_type)
+        db.session.delete(p)
+        db.session.commit()
+        return ok_response({'deleted': gpu_type, **_all_prices()})
+    data = request.get_json(force=True, silent=True) or {}
+    gpu_type = str(data.get('gpu_type', '') or '').strip()
+    price_fen = safe_int(data.get('price_fen'))
+    if not gpu_type:
+        return err_response('gpu_type required')
+    if price_fen < 0 or price_fen > MAX_TRANSFER_FEN:
+        return err_response('price invalid (0~%s)' % MAX_TRANSFER_FEN)
+    p = db.session.query(GpuPrice).filter_by(gpu_type=gpu_type).first()
+    if not p:
+        p = GpuPrice(gpu_type=gpu_type, unit='元/卡/月')
+        db.session.add(p)
+    p.price_fen = price_fen
+    p.updated_by = current_operator()
+    db.session.commit()
+    return ok_response({'gpu_type': gpu_type, 'price_fen': price_fen, **_all_prices()})
 
 
 # ============================================================
@@ -633,6 +682,7 @@ def _bill_to_dict(b):
         'cpu': b.cpu,
         'memory': b.memory,
         'gpu_num': b.gpu_num,
+        'gpu_type': b.gpu_type or '',
         'gpu_memory': b.gpu_memory,
         'duration_seconds': b.duration_seconds,
         'amount_fen': b.amount_fen,

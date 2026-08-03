@@ -4,7 +4,8 @@
 -- 内容：42 个用户（含中心-部门组织）+ 钱包余额 + 资金流水
 --
 -- 执行说明：
---   1. 计费三表（bill / wallet / account_log）会【先删除再重建】，幂等可重复执行
+--   1. 计费表（bill / wallet / account_log / price_config / gpu_price）会【先删除再重建】，幂等可重复执行；
+--      其中 account_log 含冲正字段（reversed / ref_log_id），price_config 含默认月单价，gpu_price 按显卡型号定价
 --   2. ab_user 为平台用户主表，【不会删除】；已存在的用户（如 admin）自动跳过（INSERT IGNORE）
 --   3. 用户密码已含哈希，导入后可直接用 test123 / admin 登录
 --   4. 建议在测试环境执行；生产环境请确认不影响真实用户
@@ -12,8 +13,44 @@
 
 -- ---------- 1. 删除并重建计费表 ----------
 DROP TABLE IF EXISTS `account_log`;
-DROP TABLE IF EXISTS `wallet`;
 DROP TABLE IF EXISTS `bill`;
+DROP TABLE IF EXISTS `wallet`;
+DROP TABLE IF EXISTS `gpu_price`;
+DROP TABLE IF EXISTS `price_config`;
+
+CREATE TABLE `price_config` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `resource_type` varchar(50) NOT NULL,
+  `price_fen` int(11) DEFAULT NULL,
+  `unit` varchar(50) DEFAULT NULL,
+  `updated_by` varchar(100) DEFAULT NULL,
+  `updated_on` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_price_resource` (`resource_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO `price_config` (`resource_type`, `price_fen`, `unit`, `updated_by`) VALUES
+('cpu', 20000, '元/核/月', 'system'),
+('memory', 10000, '元/GB/月', 'system'),
+('gpu_memory', 100000, '元/GB显存/月', 'system');
+
+CREATE TABLE `gpu_price` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `gpu_type` varchar(50) NOT NULL,           -- GPU 型号（A40/L20/A100/H100...）
+  `price_fen` int(11) DEFAULT NULL,          -- 每卡每月（分）
+  `unit` varchar(50) DEFAULT NULL,           -- 如 元/卡/月
+  `updated_by` varchar(100) DEFAULT NULL,
+  `updated_on` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_gpu_type` (`gpu_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO `gpu_price` (`gpu_type`, `price_fen`, `unit`, `updated_by`) VALUES
+('A40', 300000, '元/卡/月', 'system'),
+('L20', 200000, '元/卡/月', 'system'),
+('A100', 500000, '元/卡/月', 'system'),
+('H100', 800000, '元/卡/月', 'system');
+
 
 CREATE TABLE `bill` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -26,6 +63,7 @@ CREATE TABLE `bill` (
   `cpu` float DEFAULT NULL,
   `memory` float DEFAULT NULL,
   `gpu_num` float DEFAULT NULL,
+  `gpu_type` varchar(50) DEFAULT NULL,
   `gpu_memory` float DEFAULT NULL,
   `duration_seconds` int(11) DEFAULT NULL,
   `amount_fen` int(11) DEFAULT NULL,

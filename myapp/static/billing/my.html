@@ -256,7 +256,7 @@
       <span class="muted">资源月单价 · 按使用时长折算（每月 720 小时）</span>
     </div>
     <div class="price-grid" id="priceRow"></div>
-    <div class="price-edit-note">任务费用 =（CPU核数 × CPU月单价 + 内存GB × 内存月单价 + 显存GB × 显存月单价）× 使用时长 ÷ 720 小时</div>
+    <div class="price-edit-note">任务费用 =（CPU核数 × CPU月单价 + 内存GB × 内存月单价 + GPU卡数 × 型号月单价）× 使用时长 ÷ 720 小时</div>
   </div>
 </div>
 
@@ -407,19 +407,27 @@ function switchTab(tab) {
 const PRICE_META = {
   cpu: { name: 'CPU', ico: 'cpu', color: '#eef1fe', colorTxt: '#4f6ef7' },
   memory: { name: '内存', ico: 'drive', color: '#e8f9ef', colorTxt: '#22c55e' },
-  gpu_memory: { name: '显存', ico: 'monitor', color: '#fef4e2', colorTxt: '#f59e0b' },
 };
 async function loadPrices() {
   try {
     const r = await api('/billing/api/prices');
     const prices = r.prices || [];
-    $('priceRow').innerHTML = prices.map(p => {
-      const meta = PRICE_META[p.resource_type] || { name: p.resource_type, ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
+    const gpus = r.gpu || [];
+    const cpuMem = prices.filter(p => PRICE_META[p.resource_type]).map(p => {
+      const meta = PRICE_META[p.resource_type];
       return '<div class="price-cell">' +
         '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + meta.name + '</div>' +
         '<div class="val">' + p.price_yuan + '<small>元</small></div>' +
         '<div class="meta">' + esc(p.unit) + '</div></div>';
     }).join('');
+    const gpuCells = gpus.map(p =>
+      '<div class="price-cell">' +
+        '<div class="res"><span class="res-ico" style="background:#fef4e2;color:#f59e0b"><svg class="ico"><use href="#i-monitor"/></svg></span>' + esc(p.gpu_type) + '</div>' +
+        '<div class="val">' + p.price_yuan + '<small>元</small></div>' +
+        '<div class="meta">' + esc(p.unit) + '</div></div>'
+    ).join('');
+    $('priceRow').innerHTML = (cpuMem || '') + gpuCells ||
+      '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>';
   } catch (e) {
     $('priceRow').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>';
   }
