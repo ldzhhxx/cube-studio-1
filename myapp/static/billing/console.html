@@ -325,7 +325,7 @@
   .dt-row .search-select .input { width: 100%; }
   .dt-model-cell { display: flex; gap: 6px; align-items: center; }
   .dt-model-cell .select { width: 118px; flex-shrink: 0; font-size: 12.5px; }
-  .dt-model-cell .input { flex: 1; min-width: 60px; }
+  .dt-model-cell .input { flex: 1; min-width: 60px; width: auto; }
   .dt-amount { text-align: right; font-weight: 600; color: var(--primary); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .dt-del { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; }
 
@@ -1333,14 +1333,15 @@ function addDeductRow() {
   // 计费项列（按配置动态）
   (state.items || []).forEach(it => {
     if (it.item_type === 'model') {
-      // 型号分组：显示所有型号，每个型号右边一个数量输入框（填了就算，不填不用）
+      // 型号分组：下拉选型号 + 一个数量框（只填一个数量，选哪个型号就用哪个的价格）
       const uq = unitQuantity(it.unit);
-      const childInputs = (it.children || []).map(c =>
-        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">' +
-          '<span style="font-size:12px;color:var(--text-2);min-width:52px;white-space:nowrap" title="' + esc(c.item_name) + ' 单价 ' + c.price_yuan + '元/' + (uq ? esc(uq) : '单位') + '/月">' + esc(c.item_name) + '</span>' +
-          '<input class="input" id="dtQ' + n + '_' + esc(c.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '0') + '" title="' + esc(c.item_name) + ' 数量（' + (uq ? esc(uq) : '') + '），单价 ' + c.price_yuan + '元/' + (uq ? esc(uq) : '单位') + '/月" oninput="calcDeductRow(' + n + ')">' +
-        '</div>').join('');
-      html += '<div>' + (childInputs || '<span class="muted" style="font-size:12px">暂无型号，请先在计费标准中添加</span>') + '</div>';
+      const opts = ['<option value="">选择型号</option>']
+        .concat((it.children || []).map(c =>
+          '<option value="' + esc(c.item_key) + '">' + esc(c.item_name) + '（' + c.price_yuan + '元/' + (uq ? esc(uq) : '单位') + '/月）</option>')).join('');
+      html += '<div class="dt-model-cell">' +
+        '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
+        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '数量') + '" title="数量（' + (uq ? esc(uq) : '单位') + '），所选型号的单价计费" oninput="calcDeductRow(' + n + ')">' +
+      '</div>';
     } else {
       html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="0" oninput="calcDeductRow(' + n + ')">';
     }
@@ -1359,13 +1360,12 @@ function collectRowResources(n) {
   const res = [];
   (state.items || []).forEach(it => {
     if (it.item_type === 'model') {
-      // 型号分组：每个子型号数量>0 则计入（可同时用多个型号）
-      (it.children || []).forEach(c => {
-        const qEl = $('dtQ' + n + '_' + c.item_key);
-        if (!qEl) return;
-        const q = parseFloat(qEl.value) || 0;
-        if (q > 0) res.push({ item_key: c.item_key, quantity: q });
-      });
+      // 型号分组：下拉选中的型号 + 数量（一行一个型号，多型号加行）
+      const oEl = $('dtO' + n + '_' + it.item_key);
+      const qEl = $('dtQ' + n + '_' + it.item_key);
+      const opt = oEl ? oEl.value : '';
+      const q = parseFloat(qEl ? qEl.value : 0) || 0;
+      if (opt && q > 0) res.push({ item_key: opt, quantity: q });
       return;
     }
     const qEl = $('dtQ' + n + '_' + it.item_key);
