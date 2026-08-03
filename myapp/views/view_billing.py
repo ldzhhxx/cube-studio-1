@@ -429,7 +429,7 @@ def _do_deduct(item):
     pod_name = str(item.get('pod_name', '') or '').strip()
     duration_seconds = safe_int(item.get('duration_seconds'))
     resources = item.get('resources')
-    # 旧字段兼容：cpu/memory/gpu_num/gpu_type → resources
+    # 旧字段兼容：cpu/memory/gpu_num/gpu_type → resources（GPU 父项按实际 model 型分组查找）
     if not resources and (item.get('cpu') or item.get('memory') or item.get('gpu_num')):
         resources = []
         if safe_float(item.get('cpu')) > 0:
@@ -437,7 +437,10 @@ def _do_deduct(item):
         if safe_float(item.get('memory')) > 0:
             resources.append({'item_key': 'memory', 'quantity': safe_float(item.get('memory'))})
         if safe_float(item.get('gpu_num')) > 0:
-            resources.append({'item_key': 'gpu', 'option_key': str(item.get('gpu_type', '') or '').strip(),
+            gpu_parent = db.session.query(PriceConfig).filter(
+                PriceConfig.item_type == 'model', PriceConfig.parent_key.is_(None)).first()
+            resources.append({'item_key': gpu_parent.item_key if gpu_parent else 'gpu',
+                              'option_key': str(item.get('gpu_type', '') or '').strip(),
                               'quantity': safe_float(item.get('gpu_num'))})
     # 算价：resources 存在则后端权威计算；否则沿用 amount_fen（外部指定）
     calc_items = []
