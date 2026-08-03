@@ -1276,6 +1276,11 @@ async function doRecharge() {
 }
 
 let dtRowSeq = 0;
+// 从单位解析数量单位：'元/G/月' → 'G'；'元/卡/月' → '卡'
+function unitQuantity(unit) {
+  const m = String(unit || '').match(/元\/([^/]+)\/月/);
+  return m ? m[1] : '';
+}
 // 动态列模板：用户 + 每个计费项 + 时长 + 金额 + 任务名 + 删除
 function deductCols() {
   const itemCols = (state.items || []).map(it => it.item_type === 'model' ? '132px' : '92px').join(' ');
@@ -1287,7 +1292,8 @@ function renderDeductHead() {
   (state.items || []).forEach(it => {
     const unitShort = String(it.unit || '').replace('元/', '').replace('/月', '');
     if (it.item_type === 'model') {
-      h += '<div class="dt-col">' + esc(it.item_name) + '<br><span class="muted" style="font-size:11px">型号 / 数量</span></div>';
+      const uq = unitQuantity(it.unit);
+      h += '<div class="dt-col">' + esc(it.item_name) + '<br><span class="muted" style="font-size:11px">型号 / ' + (uq ? esc(uq) : '数量') + '</span></div>';
     } else {
       h += '<div class="dt-col">' + esc(it.item_name) + (unitShort ? '<br><span class="muted" style="font-size:11px">' + esc(unitShort) + '</span>' : '') + '</div>';
     }
@@ -1314,9 +1320,10 @@ function addDeductRow() {
     if (it.item_type === 'model') {
       const opts = ['<option value="">型号</option>']
         .concat((it.options || []).map(o => '<option value="' + esc(o.option_key) + '">' + esc(o.option_name) + '</option>')).join('');
+      const uq = unitQuantity(it.unit);
       html += '<div class="dt-model-cell">' +
         '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
-        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="1" placeholder="数量" oninput="calcDeductRow(' + n + ')">' +
+        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '数量') + '" title="数量（' + (uq ? esc(uq) : '单位') + '）" oninput="calcDeductRow(' + n + ')">' +
       '</div>';
     } else {
       html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="0" oninput="calcDeductRow(' + n + ')">';
@@ -1483,10 +1490,12 @@ async function loadPrices() {
         });
         if (priceEditing) {
           rows += '<tr class="pt-opt" style="background:#fbfcff">' +
-            '<td><div class="pt-opt-name">＋ 型号</div></td><td></td>' +
-            '<td colspan="4"><div style="display:flex;gap:8px">' +
-              '<input class="input" id="newOpt_' + esc(it.item_key) + '" placeholder="型号如 A10" style="width:130px;height:30px;font-size:12.5px">' +
-              '<input class="input" id="newOptPrice_' + esc(it.item_key) + '" type="number" min="0" step="0.01" placeholder="价格(元/月)" style="width:130px;height:30px;font-size:12.5px">' +
+            '<td><div class="pt-opt-name">＋ 批量型号</div></td><td></td>' +
+            '<td colspan="4"><div style="display:flex;gap:8px;align-items:flex-start">' +
+              '<textarea class="input" id="newOpt_' + esc(it.item_key) + '" rows="4" placeholder="每行一个型号，格式：型号 价格' + String.fromCharCode(10) +
+              '如：A40 3000' + String.fromCharCode(10) + 'L20 7000（按' + esc(it.unit || '元/单位/月') + '）" ' +
+              'style="flex:1;height:auto;min-height:92px;resize:vertical;font-size:12.5px;line-height:1.7;font-family:inherit"></textarea>' +
+              '<button class="btn btn-primary btn-sm" onclick="addBatchOptions(\'' + esc(it.item_key).replace(/'/g, "\\\\'") + '\')" style="margin-top:2px">添加</button>' +
             '</div></td><td class="pt-actions"></td></tr>';
         }
       } else {
@@ -1553,6 +1562,33 @@ function deleteItem(itemKey) {
     } catch (e) { toast('删除失败：' + e.message, 'error'); }
   });
 }
+// 批量添加型号：每行一个"型号 价格"（空格/逗号/Tab 分隔），一次可加多个
+async function addBatchOptions(itemKey) {
+  const ta = $('newOpt_' + itemKey);
+  if (!ta) return;
+  const lines = (ta.value || '').split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return toast('请粘贴型号清单（每行：型号 价格）', 'error');
+  const parsed = [];
+  for (const line of lines) {
+    const parts = line.split(/[\s,，\t]+/).filter(Boolean);
+    if (parts.length < 2) return toast('第 ' + (lines.indexOf(line) + 1) + ' 行格式不对：' + line, 'error');
+    const price = parseFloat(parts[parts.length - 1]);
+    if (!price || price <= 0) return toast('第 ' + (lines.indexOf(line) + 1) + ' 行价格无效：' + line, 'error');
+    parsed.push({ option_key: parts.slice(0, -1).join('_'), price_fen: Math.round(price * 100) });
+  }
+  let ok = 0, fail = 0;
+  for (const p of parsed) {
+    try {
+      await api('/billing/api/admin/items/options', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_key: itemKey, option_key: p.option_key, price_fen: p.price_fen }) });
+      ok++;
+    } catch (e) { fail++; }
+  }
+  toast('型号添加完成：成功 ' + ok + ' 个' + (fail ? '，失败 ' + fail + ' 个' : ''), fail ? 'error' : 'success');
+  ta.value = '';
+  loadPrices();
+}
+
 function deleteOption(itemKey, optionKey) {
   confirmAction('删除型号 ' + optionKey, '删除后该型号无法用于算价（历史账单不受影响）。', async () => {
     try {
@@ -1573,7 +1609,7 @@ async function savePrices() {
       await api('/billing/api/admin/items/price', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_key: it.item_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
     }
-    // 型号细项改价 + 新增型号
+    // 型号细项改价（新增型号走「＋ 批量型号」按钮）
     for (const it of state.items) {
       if (it.item_type !== 'model') continue;
       for (const o of it.options || []) {
@@ -1581,12 +1617,6 @@ async function savePrices() {
         if (!el) continue;
         await api('/billing/api/admin/items/price', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ item_key: it.item_key, option_key: o.option_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
-      }
-      const newOpt = $('newOpt_' + it.item_key);
-      const newOptPrice = $('newOptPrice_' + it.item_key);
-      if (newOpt && newOpt.value.trim() && newOptPrice && parseFloat(newOptPrice.value) > 0) {
-        await api('/billing/api/admin/items/options', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item_key: it.item_key, option_key: newOpt.value.trim(), price_fen: Math.round(parseFloat(newOptPrice.value) * 100) }) });
       }
     }
     priceEditing = false;
