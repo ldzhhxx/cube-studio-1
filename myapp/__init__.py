@@ -265,7 +265,7 @@ import pysnooper
 @app.before_request
 # @pysnooper.snoop(watch_explode='aa')
 def check_login():
-    static_urls=['/static','/logout','/login','/health','/wechat']
+    static_urls=['/static','/logout','/login','/health','/wechat','/billing/api']
     for url in static_urls:
         if url in request.path:
             return

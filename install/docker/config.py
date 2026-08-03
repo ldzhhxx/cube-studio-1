@@ -932,6 +932,12 @@ MODEL_URLS = {
 COOKIE_DOMAIN = ''
 SERVICE_DOMAIN='service.local.com'
 
+# ==================== 计费系统 ====================
+# 外部费用清单推送接口的鉴权 token（外部系统调用 /billing/api/push 时放在请求头 X-Billing-Token）
+BILLING_TOKEN = os.getenv('BILLING_TOKEN', 'change-me-to-your-own-token')
+# 余额下限（分），低于该值禁止发起新的任务运行，允许先跑后扣
+BILLING_MIN_BALANCE = -10000  # -100元
+
 
 # 所有训练集群的信息
 CLUSTERS={

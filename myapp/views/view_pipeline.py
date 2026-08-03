@@ -949,6 +949,17 @@ class Pipeline_ModelView_Base():
     def run_pipeline(self,pipeline_id):
         print(pipeline_id)
         pipeline = db.session.query(Pipeline).filter_by(id=pipeline_id).first()
+        # 计费余额拦截：有账单记录的用户余额低于下限时禁止发起运行（先跑后扣，允许欠费但有限额）
+        try:
+            from myapp.models.model_billing import Wallet
+            if pipeline.created_by and pipeline.created_by.id:
+                wallet = db.session.query(Wallet).filter_by(user_id=pipeline.created_by.id).first()
+                if wallet and wallet.balance_fen < conf.get('BILLING_MIN_BALANCE', -10000):
+                    flash('余额不足，欠费超限，请先充值后再运行（当前余额 %.2f 元，下限 %.2f 元）' % (
+                        wallet.balance_fen / 100.0, conf.get('BILLING_MIN_BALANCE', -10000) / 100.0), 'warning')
+                    return redirect('/pipeline_modelview/web/%s' % pipeline.id)
+        except Exception as e:
+            print('check balance error: %s' % e)
         pipeline.delete_old_task()
         tasks = db.session.query(Task).filter_by(pipeline_id=pipeline_id).all()
         if not tasks:

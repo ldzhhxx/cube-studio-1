@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的账单</title>
+<style>
+  :root {
+    --primary: #4f6ef7;
+    --primary-dark: #3b55d9;
+    --primary-light: #eef1fe;
+    --success: #22c55e;
+    --success-bg: #e8f9ef;
+    --danger: #ef4444;
+    --danger-bg: #fdecec;
+    --warning: #f59e0b;
+    --warning-bg: #fef4e2;
+    --info: #06b6d4;
+    --info-bg: #e5f8fb;
+    --text: #1f2430;
+    --text-2: #5a6172;
+    --text-3: #9aa1b2;
+    --border: #e6e9f2;
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --radius: 14px;
+    --shadow: 0 4px 16px rgba(31, 45, 90, .07);
+    --shadow-hover: 0 10px 28px rgba(31, 45, 90, .13);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #c9cfe0; border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ===== 头部 ===== */
+  .hero {
+    background: linear-gradient(120deg, #2b3c9e 0%, #4f6ef7 55%, #7aa2ff 100%);
+    padding: 30px 32px 90px; color: #fff; position: relative; overflow: hidden;
+  }
+  .hero::after {
+    content: ""; position: absolute; right: -120px; top: -140px;
+    width: 420px; height: 420px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.14), transparent 65%);
+  }
+  .hero-inner { max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; }
+  .hero-title { display: flex; align-items: center; gap: 14px; }
+  .hero-title .logo {
+    width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,.16);
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .hero-title h1 { font-size: 21px; font-weight: 600; letter-spacing: .5px; }
+  .hero-title p { font-size: 12px; opacity: .75; margin-top: 3px; }
+
+  /* ===== 余额主卡 ===== */
+  .balance-card {
+    max-width: 1100px; margin: -58px auto 0; padding: 0 32px; position: relative; z-index: 2;
+  }
+  .balance-main {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 26px 30px; display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 20px; border: 1px solid transparent; transition: all .2s ease;
+  }
+  .balance-main:hover { box-shadow: var(--shadow-hover); border-color: #d8defc; }
+  .balance-left .label { font-size: 13px; color: var(--text-2); }
+  .balance-value { font-size: 42px; font-weight: 800; margin-top: 8px; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .balance-value small { font-size: 16px; font-weight: 500; color: var(--text-3); margin-left: 5px; }
+  .balance-value.negative { color: var(--danger); }
+  .balance-meta { font-size: 12.5px; color: var(--text-3); margin-top: 8px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .balance-meta b { color: var(--text-2); font-weight: 600; }
+
+  /* 欠费状态条 */
+  .status-bar {
+    max-width: 1100px; margin: 14px auto 0; padding: 0 32px;
+  }
+  .status-box {
+    border-radius: 12px; padding: 13px 18px; display: flex; align-items: center; gap: 12px;
+    font-size: 14px; font-weight: 500; box-shadow: var(--shadow);
+  }
+  .status-box.overdue { background: var(--warning-bg); color: #b45309; }
+  .status-box.blocked { background: var(--danger-bg); color: #b91c1c; }
+  .status-box.normal { background: var(--success-bg); color: #15803d; }
+  .status-box .ico { font-size: 18px; }
+
+  /* ===== 统计小卡 ===== */
+  .section { max-width: 1100px; margin: 18px auto 0; padding: 0 32px; }
+  .mini-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .mini-card {
+    background: var(--card); border-radius: var(--radius); padding: 16px 20px;
+    box-shadow: var(--shadow); transition: all .2s ease;
+  }
+  .mini-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+  .mini-label { font-size: 12.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+  .mini-value { font-size: 22px; font-weight: 700; margin-top: 7px; font-variant-numeric: tabular-nums; }
+  .mini-value small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+
+  /* ===== 明细面板 ===== */
+  .panel {
+    max-width: 1100px; margin: 20px auto 40px; padding: 0 32px;
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; background: #fbfcff; }
+  .tab {
+    padding: 15px 22px; font-size: 15px; font-weight: 500; color: var(--text-2);
+    cursor: pointer; border-bottom: 3px solid transparent; transition: all .15s ease;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tab:hover { color: var(--primary); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab .count-badge {
+    background: var(--primary-light); color: var(--primary); font-size: 11.5px;
+    border-radius: 20px; padding: 1px 9px; font-weight: 600;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 11px 14px; text-align: left; white-space: nowrap;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 12px 14px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; }
+  tbody tr { transition: background .12s ease; }
+  tbody tr:hover { background: #f7f9fe; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .empty { text-align: center; padding: 60px 0; color: var(--text-3); }
+  .tag { display: inline-flex; align-items: center; padding: 2.5px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .tag-success { background: var(--success-bg); color: var(--success); }
+  .tag-danger { background: var(--danger-bg); color: var(--danger); }
+  .tag-info { background: var(--info-bg); color: var(--info); }
+  .tag-warning { background: var(--warning-bg); color: var(--warning); }
+  .tag-neutral { background: #f0f2f7; color: var(--text-2); }
+  .amount-plus { color: var(--success); font-weight: 600; }
+  .amount-minus { color: var(--danger); font-weight: 600; }
+  .muted { color: var(--text-3); }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 20px; }
+  .pager .info { font-size: 12.5px; color: var(--text-3); margin-right: auto; }
+  .pager button {
+    min-width: 32px; height: 32px; border: 1px solid var(--border); background: #fff;
+    border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-2);
+    transition: all .15s ease; font-family: inherit;
+  }
+  .pager button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .pager button:disabled { opacity: .4; cursor: not-allowed; }
+  .pager button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  @media (max-width: 900px) {
+    .mini-stats { grid-template-columns: 1fr; }
+    .hero { padding: 24px 20px 80px; }
+    .balance-card, .section, .panel { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-title">
+      <div class="logo">💳</div>
+      <div>
+        <h1>我的账单</h1>
+        <p id="userOrg">任务费用 · 一目了然</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 余额主卡 -->
+<div class="balance-card">
+  <div class="balance-main">
+    <div class="balance-left">
+      <div class="label">我的余额</div>
+      <div class="balance-value" id="balanceValue">–</div>
+      <div class="balance-meta" id="balanceMeta">–</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:13px;color:var(--text-2)">计费规则</div>
+      <div style="font-size:15px;font-weight:600;margin-top:6px">先跑后扣 · 实时入账</div>
+      <div style="font-size:12.5px;color:var(--text-3);margin-top:5px" id="minHint">欠费超过下限将禁止发起任务</div>
+    </div>
+  </div>
+</div>
+
+<!-- 欠费状态 -->
+<div class="status-bar" id="statusBar"></div>
+
+<!-- 统计小卡 -->
+<div class="section">
+  <div class="mini-stats">
+    <div class="mini-card"><div class="mini-label">🧾 账单条数</div><div class="mini-value" id="msBills">–</div></div>
+    <div class="mini-card"><div class="mini-label">⬇ 累计消费</div><div class="mini-value" id="msConsume">–</div></div>
+    <div class="mini-card"><div class="mini-label">⬆ 累计充值</div><div class="mini-value" id="msRecharge">–</div></div>
+  </div>
+</div>
+
+<!-- 明细/流水 -->
+<div class="panel">
+  <div class="tabs">
+    <div class="tab active" data-tab="bill" onclick="switchTab('bill')">🧾 费用明细 <span class="count-badge" id="badgeBill">0</span></div>
+    <div class="tab" data-tab="log" onclick="switchTab('log')">📒 资金流水 <span class="count-badge" id="badgeLog">0</span></div>
+  </div>
+
+  <div id="panel-bill">
+    <table>
+      <thead><tr><th>#</th><th>pod</th><th>任务</th><th style="text-align:right">资源</th><th style="text-align:right">时长</th><th style="text-align:right">费用（元）</th><th>状态</th><th>入账时间</th></tr></thead>
+      <tbody id="billBody"></tbody>
+    </table>
+    <div class="pager"><span class="info" id="bInfo"></span><button onclick="billPage(-1)">‹</button><span id="bPages"></span><button onclick="billPage(1)">›</button></div>
+  </div>
+
+  <div id="panel-log" style="display:none">
+    <table>
+      <thead><tr><th>#</th><th>类型</th><th style="text-align:right">金额（元）</th><th style="text-align:right">变动后余额</th><th>备注</th><th>时间</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+    <div class="pager"><span class="info" id="lInfo"></span><button onclick="logPage(-1)">‹</button><span id="lPages"></span><button onclick="logPage(1)">›</button></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PAGE_SIZE = 15;
+const state = { bills: { page: 1 }, logs: { page: 1 }, balance: null };
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function yuan(fen) { return (fen / 100).toFixed(2); }
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:20px;right:20px;background:#fff;border-radius:10px;padding:12px 18px;box-shadow:0 12px 32px rgba(15,23,42,.16);font-size:14px;z-index:999;border-left:4px solid ' + (type === 'error' ? '#ef4444' : '#4f6ef7');
+  el.textContent = (type === 'error' ? '❌ ' : 'ℹ️ ') + msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+async function api(url) {
+  const resp = await fetch(url);
+  let data = null;
+  try { data = await resp.json(); } catch (e) {}
+  if (!resp.ok || !data || data.status !== 200) throw new Error((data && data.message) || ('HTTP ' + resp.status));
+  return data.result;
+}
+function tag(type, text) {
+  return '<span class="tag tag-' + type + '">' + text + '</span>';
+}
+function statusTag(s) {
+  return s === 'settled' ? tag('success', '已入账') : s === 'failed' ? tag('danger', '入账失败') : s === 'updated' ? tag('info', '已修正') : tag('neutral', s || '未知');
+}
+function pagination(cur, total, fn) {
+  const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+  let start = Math.max(1, cur - 2), end = Math.min(pages, start + 4);
+  start = Math.max(1, end - 4);
+  let html = '';
+  for (let i = start; i <= end; i++) html += '<button class="' + (i === cur ? 'active' : '') + '" onclick="' + fn + '(' + i + ')">' + i + '</button>';
+  return html;
+}
+
+async function loadBalance() {
+  try {
+    const b = await api('/billing/api/my_balance');
+    state.balance = b;
+    $('userOrg').textContent = (b.org ? b.org + ' · ' : '') + '任务费用 · 一目了然';
+    const el = $('balanceValue');
+    el.textContent = yuan(b.balance_fen) + '';
+    el.innerHTML += '<small>元</small>';
+    el.classList.toggle('negative', b.balance_fen < 0);
+    $('balanceMeta').innerHTML = '用户名 <b>' + esc(b.username) + '</b> · 部门 <b>' + esc(b.org || '未分组') + '</b> · 精确到分 <b>' + b.balance_fen + '</b>';
+    $('minHint').textContent = '余额下限 ' + b.min_balance_yuan + ' 元，低于该值将禁止发起任务';
+    // 累计统计（后端 SQL 聚合，全量准确）
+    $('msConsume').innerHTML = b.total_consume_yuan + ' <small>元</small>';
+    $('msRecharge').innerHTML = b.total_recharge_yuan + ' <small>元</small>';
+    if (b.total_refund_fen > 0) $('msRecharge').innerHTML += '<div style="font-size:11px;color:var(--success)">含退款 ' + b.total_refund_yuan + ' 元</div>';
+    // 状态条
+    const bar = $('statusBar');
+    if (b.status === 'blocked') {
+      bar.innerHTML = '<div class="status-box blocked"><span class="ico">🚫</span>欠费已超限：余额 ' + yuan(b.balance_fen) + ' 元，低于下限 ' + b.min_balance_yuan + ' 元，<b>无法发起新的任务</b>，请联系管理员充值。</div>';
+    } else if (b.status === 'overdue') {
+      bar.innerHTML = '<div class="status-box overdue"><span class="ico">⚠️</span>当前欠费 ' + yuan(-b.balance_fen) + ' 元（先跑后扣），余额低于下限时将暂停任务发起。</div>';
+    } else {
+      bar.innerHTML = '<div class="status-box normal"><span class="ico">✅</span>账户状态正常，任务费用将实时扣减余额。</div>';
+    }
+  } catch (e) {
+    $('balanceValue').textContent = '加载失败';
+    toast('余额加载失败：' + e.message, 'error');
+  }
+}
+
+async function loadBills(page) {
+  if (page) state.bills.page = page;
+  const p = state.bills.page;
+  try {
+    const r = await api('/billing/api/my_bills?page=' + p + '&page_size=' + PAGE_SIZE);
+    state.billsTotal = r.count;
+    const rows = (r.bills || []).map(b => {
+      const res = (b.cpu || 0) + 'C / ' + (b.memory || 0) + 'G' + (b.gpu_num ? ' / ' + b.gpu_num + 'GPU' : '');
+      return '<tr><td class="muted">' + b.id + '</td>' +
+        '<td class="mono">' + esc(b.pod_name) + '</td>' +
+        '<td>' + esc(b.task_name || '-') + '</td>' +
+        '<td style="text-align:right" class="muted mono">' + res + '</td>' +
+        '<td style="text-align:right" class="mono">' + (b.duration_seconds ? (b.duration_seconds / 3600).toFixed(2) : '0') + 'h</td>' +
+        '<td style="text-align:right" class="mono amount-minus">' + yuan(b.amount_fen) + '</td>' +
+        '<td>' + statusTag(b.status) + '</td>' +
+        '<td class="muted">' + esc(b.created_on) + '</td></tr>';
+    }).join('');
+    $('billBody').innerHTML = rows || '<tr><td colspan="8" class="empty">还没有费用明细，跑一个任务试试</td></tr>';
+    $('badgeBill').textContent = r.count;
+    $('bInfo').textContent = '共 ' + r.count + ' 条 · 第 ' + r.page + '/' + Math.max(Math.ceil(r.count / PAGE_SIZE), 1) + ' 页';
+    $('bPages').innerHTML = pagination(p, r.count, 'loadBills');
+  } catch (e) { toast('明细加载失败：' + e.message, 'error'); }
+}
+
+async function loadLogs(page) {
+  if (page) state.logs.page = page;
+  const p = state.logs.page;
+  try {
+    const r = await api('/billing/api/my_logs?page=' + p + '&page_size=' + PAGE_SIZE);
+    const rows = (r.logs || []).map(l => {
+      const amtCls = l.type === 'consume' || l.type === 'transfer_out' ? 'amount-minus' : 'amount-plus';
+      const sign = l.type === 'consume' || l.type === 'transfer_out' ? '-' : '+';
+      const typeTag = { recharge: tag('success', '充值'), consume: tag('danger', '消费'), transfer_in: tag('info', '转入'), transfer_out: tag('warning', '转出') }[l.type] || tag('neutral', l.type_name);
+      return '<tr><td class="muted">' + l.id + '</td>' +
+        '<td>' + typeTag + '</td>' +
+        '<td style="text-align:right" class="mono ' + amtCls + '">' + sign + yuan(l.amount_fen) + '</td>' +
+        '<td style="text-align:right" class="mono">' + yuan(l.balance_after_fen) + '</td>' +
+        '<td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(l.remark) + '">' + esc(l.remark || '-') + '</td>' +
+        '<td class="muted">' + esc(l.created_on) + '</td></tr>';
+    }).join('');
+    $('logBody').innerHTML = rows || '<tr><td colspan="6" class="empty">暂无资金流水</td></tr>';
+    $('badgeLog').textContent = r.count;
+    $('lInfo').textContent = '共 ' + r.count + ' 条 · 第 ' + r.page + '/' + Math.max(Math.ceil(r.count / PAGE_SIZE), 1) + ' 页';
+    $('lPages').innerHTML = pagination(p, r.count, 'loadLogs');
+  } catch (e) { toast('流水加载失败：' + e.message, 'error'); }
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  ['bill', 'log'].forEach(t => { $('panel-' + t).style.display = t === tab ? '' : 'none'; });
+}
+
+loadBalance();
+loadBills();
+loadLogs();
+</script>
+</body>
+</html>

@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>计费中心</title>
+<style>
+  :root {
+    --primary: #4f6ef7;
+    --primary-dark: #3b55d9;
+    --primary-light: #eef1fe;
+    --success: #22c55e;
+    --success-bg: #e8f9ef;
+    --danger: #ef4444;
+    --danger-bg: #fdecec;
+    --warning: #f59e0b;
+    --warning-bg: #fef4e2;
+    --info: #06b6d4;
+    --info-bg: #e5f8fb;
+    --text: #1f2430;
+    --text-2: #5a6172;
+    --text-3: #9aa1b2;
+    --border: #e6e9f2;
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --radius: 14px;
+    --shadow: 0 4px 16px rgba(31, 45, 90, .07);
+    --shadow-hover: 0 10px 28px rgba(31, 45, 90, .13);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #c9cfe0; border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ===== 头部 ===== */
+  .hero {
+    background: linear-gradient(120deg, #2b3c9e 0%, #4f6ef7 55%, #7aa2ff 100%);
+    padding: 26px 32px 72px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    right: -120px; top: -140px;
+    width: 420px; height: 420px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.14), transparent 65%);
+  }
+  .hero-top { display: flex; align-items: center; justify-content: space-between; max-width: 1280px; margin: 0 auto; position: relative; z-index: 1; }
+  .hero-title { display: flex; align-items: center; gap: 14px; }
+  .hero-title .logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: rgba(255,255,255,.16);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .hero-title h1 { font-size: 21px; font-weight: 600; letter-spacing: .5px; }
+  .hero-title p { font-size: 12px; opacity: .75; margin-top: 3px; }
+  .hero-actions { display: flex; gap: 12px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 20px; border-radius: 10px; border: none;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: all .18s ease; font-family: inherit;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); box-shadow: 0 6px 18px rgba(79,110,247,.4); }
+  .btn-white { background: rgba(255,255,255,.16); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
+  .btn-white:hover { background: rgba(255,255,255,.26); }
+  .btn-ghost { background: #fff; color: var(--primary); box-shadow: inset 0 0 0 1px var(--border); }
+  .btn-ghost:hover { background: var(--primary-light); }
+  .btn-sm { padding: 6px 14px; font-size: 13px; border-radius: 8px; }
+
+  /* ===== 统计卡片 ===== */
+  .stats { max-width: 1280px; margin: -46px auto 0; padding: 0 32px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; position: relative; z-index: 2; }
+  .stat-card {
+    background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow); transition: all .2s ease; cursor: default;
+    border: 1px solid transparent;
+  }
+  .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); border-color: #d8defc; }
+  .stat-label { font-size: 12.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+  .stat-value { font-size: 26px; font-weight: 700; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .stat-value small { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+  .stat-extra { font-size: 12px; color: var(--text-3); margin-top: 5px; }
+  .stat-ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+
+  /* ===== 组织架构（中心-部门 树形表） ===== */
+  .section { max-width: 1280px; margin: 20px auto 0; padding: 0 32px; }
+  .org-panel {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .org-toolbar {
+    display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+    border-bottom: 1px solid var(--border); background: #fbfcff; flex-wrap: wrap;
+  }
+  .org-toolbar b { font-size: 15px; }
+  .org-toolbar .input { min-width: 220px; height: 34px; }
+  .org-summary { margin-left: auto; font-size: 12.5px; color: var(--text-3); }
+  .org-table { width: 100%; border-collapse: collapse; }
+  .org-table th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .org-table td { padding: 10px 14px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; }
+  .org-center { background: #fbfcff; cursor: pointer; }
+  .org-center:hover { background: var(--primary-light); }
+  .org-center td { font-weight: 600; }
+  .org-dept td { padding-left: 40px; color: var(--text-2); }
+  .org-dept.clickable { cursor: pointer; }
+  .org-dept.clickable:hover { background: var(--primary-light); }
+  .org-arrow { display: inline-block; width: 14px; font-size: 10px; color: var(--primary); transition: transform .15s ease; }
+  .bar { background: #eef1f8; border-radius: 4px; height: 7px; overflow: hidden; min-width: 80px; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, #4f6ef7, #7aa2ff); border-radius: 4px; }
+  .bar-fill.dim { background: linear-gradient(90deg, #a9b8f8, #c7d2fb); }
+  .org-muted { color: var(--text-3); font-weight: 400; font-size: 12.5px; }
+
+  /* ===== 部门内联详情（点击部门行展开） ===== */
+  .org-inline {
+    margin: 0 16px 14px; background: #fff; border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(31, 45, 90, .05);
+    animation: fadeIn .18s ease;
+  }
+  .oi-head {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; background: linear-gradient(120deg, #eef1fe, #f7f9ff);
+    border-bottom: 1px solid var(--border);
+  }
+  .oi-head b { font-size: 14.5px; color: var(--primary-dark); }
+  .oi-head .oi-summary { font-size: 12.5px; color: var(--text-2); }
+  .oi-head .oi-actions { margin-left: auto; display: flex; gap: 8px; }
+  .oi-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; }
+  .oi-col { padding: 12px 16px; border-right: 1px solid #f1f3fa; min-width: 0; }
+  .oi-col:last-child { border-right: none; }
+  .oi-col h4 {
+    font-size: 12.5px; color: var(--text-2); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .oi-col h4 .cnt { background: var(--primary-light); color: var(--primary); border-radius: 20px; padding: 0 7px; font-size: 11px; }
+  .oi-table { width: 100%; border-collapse: collapse; }
+  .oi-table td { padding: 7px 4px; border-bottom: 1px solid #f5f7fc; font-size: 12.5px; }
+  .oi-table tr:last-child td { border-bottom: none; }
+  .oi-empty { color: var(--text-3); font-size: 12.5px; padding: 10px 2px; }
+  .oi-loading { padding: 26px; text-align: center; color: var(--text-3); font-size: 13px; }
+  @media (max-width: 1024px) { .oi-cols { grid-template-columns: 1fr; } .oi-col { border-right: none; border-bottom: 1px solid #f1f3fa; } }
+
+  /* ===== 主面板 ===== */
+  .panel {
+    max-width: 1280px; margin: 20px auto 40px; padding: 0 32px;
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; background: #fbfcff; }
+  .tab {
+    padding: 15px 22px; font-size: 15px; font-weight: 500; color: var(--text-2);
+    cursor: pointer; border-bottom: 3px solid transparent; transition: all .15s ease;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tab:hover { color: var(--primary); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab .count-badge {
+    background: var(--primary-light); color: var(--primary); font-size: 11.5px;
+    border-radius: 20px; padding: 1px 9px; font-weight: 600;
+  }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 16px 20px; flex-wrap: wrap; }
+  .input, .select {
+    height: 36px; border: 1px solid var(--border); border-radius: 9px; padding: 0 12px;
+    font-size: 13.5px; font-family: inherit; color: var(--text);
+    background: #fff; outline: none; transition: all .15s ease; min-width: 130px;
+  }
+  .input:focus, .select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,.13); }
+  .input.wide { min-width: 200px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 11px 14px; text-align: left; white-space: nowrap;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  .sortable { cursor: pointer; user-select: none; }
+  .sortable:hover { color: var(--primary); }
+  .sort-mark { color: var(--primary); font-size: 10px; }
+  .action-btn {
+    padding: 3px 10px; font-size: 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: #fff; color: var(--text-2);
+    transition: all .15s ease; font-family: inherit;
+  }
+  .action-btn:hover { border-color: var(--danger); color: var(--danger); }
+  tbody td { padding: 12px 14px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; color: var(--text); }
+  tbody tr { transition: background .12s ease; }
+  tbody tr:hover { background: #f7f9fe; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .empty { text-align: center; padding: 60px 0; color: var(--text-3); font-size: 14px; }
+
+  .tag { display: inline-flex; align-items: center; padding: 2.5px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .tag-success { background: var(--success-bg); color: var(--success); }
+  .tag-danger { background: var(--danger-bg); color: var(--danger); }
+  .tag-info { background: var(--info-bg); color: var(--info); }
+  .tag-warning { background: var(--warning-bg); color: var(--warning); }
+  .tag-neutral { background: #f0f2f7; color: var(--text-2); }
+  .amount-plus { color: var(--success); font-weight: 600; }
+  .amount-minus { color: var(--danger); font-weight: 600; }
+  .user-cell { display: flex; align-items: center; gap: 9px; }
+  .user-avatar {
+    width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 600;
+    background: linear-gradient(135deg, #4f6ef7, #7aa2ff); color: #fff;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .user-avatar.alt { background: linear-gradient(135deg, #10b981, #34d399); }
+  .user-avatar.alt2 { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+  .user-avatar.alt3 { background: linear-gradient(135deg, #ef4444, #f87171); }
+  .org-chip { background: #f0f2f7; color: var(--text-2); border-radius: 6px; padding: 1.5px 8px; font-size: 12px; }
+  .muted { color: var(--text-3); }
+
+  /* ===== 分页 ===== */
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 20px; }
+  .pager .info { font-size: 12.5px; color: var(--text-3); margin-right: auto; }
+  .pager button {
+    min-width: 32px; height: 32px; border: 1px solid var(--border); background: #fff;
+    border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-2);
+    transition: all .15s ease; font-family: inherit;
+  }
+  .pager button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .pager button:disabled { opacity: .4; cursor: not-allowed; }
+  .pager button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  /* ===== 模态框 ===== */
+  .mask {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .5);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    backdrop-filter: blur(3px); animation: fadeIn .18s ease;
+  }
+  .mask.show { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: #fff; border-radius: 18px; width: 440px; max-width: calc(100vw - 40px);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .25); animation: slideUp .22s ease;
+    overflow: hidden;
+  }
+  @keyframes slideUp { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .modal-head {
+    padding: 18px 24px; display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(120deg, #2b3c9e, #4f6ef7); color: #fff;
+  }
+  .modal-head h3 { font-size: 16px; font-weight: 600; }
+  .modal-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; opacity: .8; line-height: 1; }
+  .modal-close:hover { opacity: 1; }
+  .modal-body { padding: 22px 24px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px; font-weight: 500; }
+  .field .input, .field .select { width: 100%; min-width: 0; height: 40px; }
+
+  /* ===== 可搜索用户选择 ===== */
+  .search-select { position: relative; }
+  .search-select .input { width: 100%; min-width: 0; height: 40px; }
+  .ss-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .14); z-index: 50;
+    max-height: 260px; overflow-y: auto; display: none;
+  }
+  .ss-dropdown.show { display: block; animation: fadeIn .14s ease; }
+  .ss-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; cursor: pointer; transition: background .1s ease;
+  }
+  .ss-item:hover { background: var(--primary-light); }
+  .ss-item .user-cell { display: flex; align-items: center; gap: 9px; }
+  .ss-item .ss-meta { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+  .ss-empty { padding: 16px; text-align: center; color: var(--text-3); font-size: 13px; }
+  .ss-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    border: none; background: none; color: var(--text-3); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 4px;
+  }
+  .ss-clear:hover { color: var(--danger); background: var(--danger-bg); }
+  .modal-foot { padding: 0 24px 22px; display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ===== Toast ===== */
+  .toast-wrap { position: fixed; top: 22px; right: 22px; z-index: 200; display: flex; flex-direction: column; gap: 10px; }
+  .toast {
+    background: #fff; border-radius: 12px; padding: 13px 18px; min-width: 240px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .16); font-size: 14px;
+    display: flex; align-items: center; gap: 10px; animation: slideIn .22s ease;
+    border-left: 4px solid var(--primary);
+  }
+  .toast.success { border-left-color: var(--success); }
+  .toast.error { border-left-color: var(--danger); }
+  @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 1024px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .hero { padding: 22px 20px 64px; }
+    .section, .panel, .stats { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 头部 -->
+<div class="hero">
+  <div class="hero-top">
+    <div class="hero-title">
+      <div class="logo">💰</div>
+      <div>
+        <h1>计费中心</h1>
+        <p>外部算费 · 平台记账 · 实时对账</p>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <button class="btn btn-white" onclick="openModal('recharge')">⬆ 充值</button>
+      <button class="btn btn-white" onclick="openModal('deduct')">⬇ 扣费</button>
+      <button class="btn btn-white" onclick="openModal('transfer')">⇄ 转账</button>
+      <button class="btn btn-white" onclick="refreshAll()">⟳ 刷新</button>
+    </div>
+  </div>
+</div>
+
+<!-- 统计卡片 -->
+<div class="stats" id="statsRow">
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#eef1fe;color:#4f6ef7">👥</span>平台用户</div><div class="stat-value" id="stUsers">–</div><div class="stat-extra" id="stOrgs">部门分布加载中…</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#e8f9ef;color:#22c55e">💳</span>用户总余额</div><div class="stat-value" id="stBalance">–</div><div class="stat-extra" id="stBalanceUsers">–</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#eef1fe;color:#4f6ef7">⬆</span>累计充值</div><div class="stat-value" id="stRecharge">–</div><div class="stat-extra">所有用户充值合计</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#fdecec;color:#ef4444">⬇</span>累计消费</div><div class="stat-value" id="stConsume">–</div><div class="stat-extra" id="stBills">账单条数加载中…</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#fef4e2;color:#f59e0b">📈</span>今日消费</div><div class="stat-value" id="stToday">–</div><div class="stat-extra">今天 00:00 起</div></div>
+</div>
+
+<!-- 组织架构（中心-部门树） -->
+<div class="section" id="orgSection">
+  <div class="org-panel">
+    <div class="org-toolbar">
+      <b>🏢 组织架构</b>
+      <button class="btn btn-ghost btn-sm" id="orgToggleBtn" onclick="toggleOrgPanel()" title="收起/展开组织架构，节省页面空间">收起 ▾</button>
+      <input class="input" id="orgSearch" placeholder="搜索中心 / 部门…" oninput="searchOrg()">
+      <span class="org-summary" id="orgSummary"></span>
+    </div>
+    <div id="orgTableWrap">
+      <table class="org-table">
+        <thead><tr><th>组织</th><th style="text-align:right">成员</th><th style="text-align:right">累计消费（元）</th><th style="width:28%">消费占比</th></tr></thead>
+        <tbody id="orgBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 主面板 -->
+<div class="panel">
+  <div class="tabs">
+    <div class="tab active" data-tab="wallet" onclick="switchTab('wallet')">💳 余额列表 <span class="count-badge" id="badgeWallet">0</span></div>
+    <div class="tab" data-tab="bill" onclick="switchTab('bill')">🧾 费用明细 <span class="count-badge" id="badgeBill">0</span></div>
+    <div class="tab" data-tab="log" onclick="switchTab('log')">📒 资金流水 <span class="count-badge" id="badgeLog">0</span></div>
+  </div>
+
+  <!-- 余额 -->
+  <div id="panel-wallet">
+    <div class="toolbar">
+      <select class="select" id="wCenterSel" onchange="onCenterChange('w')"><option value="">全部中心</option></select>
+      <div class="search-select" style="min-width:170px">
+        <input class="input" id="wOrgInput" placeholder="搜索部门（可跨中心）…" autocomplete="off" title="输入部门名搜索，不记得中心名也能找到">
+        <button class="ss-clear" id="wOrgClear" onclick="clearOrgPick('w')" title="清除部门筛选" style="display:none">✕</button>
+        <div class="ss-dropdown" id="wOrgDrop"></div>
+      </div>
+      <input class="input" id="wUser" placeholder="搜索用户名…">
+      <button class="btn btn-primary btn-sm" onclick="loadWallets()">查询</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th>
+        <th class="sortable" data-sort="username" onclick="sortList('w','username')">用户<span class="sort-mark" id="wSortUsername"></span></th>
+        <th class="sortable" data-sort="org" onclick="sortList('w','org')">部门<span class="sort-mark" id="wSortOrg"></span></th>
+        <th class="sortable" data-sort="balance" onclick="sortList('w','balance')" style="text-align:right">余额（元）<span class="sort-mark" id="wSortBalance"></span></th>
+        <th style="text-align:right">余额（分）</th>
+        <th class="sortable" data-sort="updated" onclick="sortList('w','updated')">更新时间<span class="sort-mark" id="wSortUpdated"></span></th>
+      </tr></thead>
+      <tbody id="walletBody"></tbody>
+    </table>
+    <div class="pager"><span class="info" id="wInfo"></span><span id="wPages"></span></div>
+  </div>
+
+  <!-- 费用明细 -->
+  <div id="panel-bill" style="display:none">
+    <div class="toolbar">
+      <input class="input" id="bPod" placeholder="pod名…">
+      <input class="input" id="bUser" placeholder="用户名…">
+      <select class="select" id="bCenterSel" onchange="onCenterChange('b')"><option value="">全部中心</option></select>
+      <div class="search-select" style="min-width:170px">
+        <input class="input" id="bOrgInput" placeholder="搜索部门（可跨中心）…" autocomplete="off" title="输入部门名搜索，不记得中心名也能找到">
+        <button class="ss-clear" id="bOrgClear" onclick="clearOrgPick('b')" title="清除部门筛选" style="display:none">✕</button>
+        <div class="ss-dropdown" id="bOrgDrop"></div>
+      </div>
+      <input class="input" id="bStart" type="date" title="开始日期">
+      <input class="input" id="bEnd" type="date" title="结束日期">
+      <button class="btn btn-primary btn-sm" onclick="loadBills()">查询</button>
+      <button class="btn btn-ghost btn-sm" onclick="resetBillFilter()">重置</button>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="exportCsv('bills')">⭳ 导出CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>pod</th><th>任务</th><th>用户</th><th>部门</th>
+        <th style="text-align:right">资源</th><th style="text-align:right">时长</th>
+        <th class="sortable" data-sort="amount" onclick="sortList('b','amount')" style="text-align:right">费用（元）<span class="sort-mark" id="bSortAmount"></span></th>
+        <th>状态</th><th>来源</th>
+        <th class="sortable" data-sort="created_on" onclick="sortList('b','created_on')">入账时间<span class="sort-mark" id="bSortCreated"></span></th>
+        <th>操作</th>
+      </tr></thead>
+      <tbody id="billBody"></tbody>
+    </table>
+    <div class="pager"><span class="info" id="bInfo"></span><span id="bPages"></span></div>
+  </div>
+
+  <!-- 资金流水 -->
+  <div id="panel-log" style="display:none">
+    <div class="toolbar">
+      <select class="select" id="lTypeSel">
+        <option value="">全部类型</option><option value="recharge">充值</option><option value="consume">消费</option>
+        <option value="transfer_in">转入</option><option value="transfer_out">转出</option>
+      </select>
+      <input class="input" id="lUser" placeholder="用户名…">
+      <button class="btn btn-primary btn-sm" onclick="loadLogs()">查询</button>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="exportCsv('logs')">⭳ 导出CSV</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>类型</th><th>转出方</th><th>转入方</th>
+        <th class="sortable" data-sort="amount" onclick="sortList('l','amount')" style="text-align:right">金额（元）<span class="sort-mark" id="lSortAmount"></span></th>
+        <th style="text-align:right">变动前</th><th style="text-align:right">变动后</th><th>操作人</th><th>备注</th>
+        <th class="sortable" data-sort="created_on" onclick="sortList('l','created_on')">时间<span class="sort-mark" id="lSortCreated"></span></th>
+        <th>操作</th>
+      </tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+    <div class="pager"><span class="info" id="lInfo"></span><span id="lPages"></span></div>
+  </div>
+</div>
+
+<!-- 充值模态框 -->
+<div class="mask" id="maskRecharge">
+  <div class="modal">
+    <div class="modal-head"><h3>⬆ 给用户充值</h3><button class="modal-close" onclick="closeModal('recharge')">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>用户名（搜索 ab_user）</label><div class="search-select"><input class="input" id="rcUser" placeholder="输入关键字搜索用户…" autocomplete="off"><div class="ss-dropdown" id="rcUserDrop"></div></div></div>
+      <div class="field"><label>金额（元）</label><input class="input" id="rcAmount" type="number" min="0.01" step="0.01" placeholder="如 100.00"></div>
+      <div class="field"><label>备注</label><input class="input" id="rcRemark" placeholder="选填"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('recharge')">取消</button>
+      <button class="btn btn-primary" id="rcSubmit" onclick="doRecharge()">确认充值</button>
+    </div>
+  </div>
+</div>
+
+<!-- 扣费模态框（支持批量多行） -->
+<div class="mask" id="maskDeduct">
+  <div class="modal" style="width:640px">
+    <div class="modal-head"><h3>⬇ 手动扣费（支持批量）</h3><button class="modal-close" onclick="closeModal('deduct')">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>扣费明细 <span class="muted" style="font-weight:400">（每行：搜索用户 + 金额 + 任务名，可添加多行批量扣费）</span></label>
+        <div id="dtRows"></div>
+        <button class="btn btn-ghost btn-sm" onclick="addDeductRow()" style="margin-top:4px">＋ 添加一行</button>
+      </div>
+      <div class="field"><label>扣费原因（整单统一，必填）</label><input class="input" id="dtRemark" placeholder="留审计依据"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('deduct')">取消</button>
+      <button class="btn btn-primary" id="dtSubmit" onclick="doDeduct()">确认扣费</button>
+    </div>
+  </div>
+</div>
+
+<!-- 转账模态框 -->
+<div class="mask" id="maskTransfer">
+  <div class="modal">
+    <div class="modal-head"><h3>⇄ 用户间转账</h3><button class="modal-close" onclick="closeModal('transfer')">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>转出用户（搜索 ab_user）</label><div class="search-select"><input class="input" id="trFrom" placeholder="输入关键字搜索用户…" autocomplete="off"><div class="ss-dropdown" id="trFromDrop"></div></div></div>
+      <div class="field"><label>转入用户（搜索 ab_user）</label><div class="search-select"><input class="input" id="trTo" placeholder="输入关键字搜索用户…" autocomplete="off"><div class="ss-dropdown" id="trToDrop"></div></div></div>
+      <div class="field"><label>金额（元）</label><input class="input" id="trAmount" type="number" min="0.01" step="0.01" placeholder="如 50.00"></div>
+      <div class="field"><label>转账原因</label><input class="input" id="trRemark" placeholder="选填"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('transfer')">取消</button>
+      <button class="btn btn-primary" id="trSubmit" onclick="doTransfer()">确认转账</button>
+    </div>
+  </div>
+</div>
+
+<!-- 确认模态框（撤销/冲正等敏感操作） -->
+<div class="mask" id="maskConfirm">
+  <div class="modal" style="width:420px">
+    <div class="modal-head" style="background:linear-gradient(120deg,#8a2b2b,#ef4444)"><h3 id="cfTitle">确认操作</h3><button class="modal-close" onclick="$('maskConfirm').classList.remove('show')">✕</button></div>
+    <div class="modal-body"><div id="cfDesc" style="line-height:1.8;color:var(--text-2);font-size:13.5px"></div></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="$('maskConfirm').classList.remove('show')">取消</button>
+      <button class="btn btn-primary" style="background:var(--danger)" onclick="doConfirm()">确认执行</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+// ================= 状态 =================
+const state = {
+  tab: 'wallet',
+  stats: null,
+  wallets: { page: 1, pageSize: 20, sortBy: 'balance', order: 'desc' },
+  bills: { page: 1, pageSize: 20, sortBy: '', order: 'desc' },
+  logs: { page: 1, pageSize: 20, sortBy: '', order: 'desc' },
+};
+const USER_COLORS = ['', 'alt', 'alt2', 'alt3'];
+
+// ================= 工具 =================
+const $ = id => document.getElementById(id);
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || '');
+  el.innerHTML = (type === 'error' ? '❌ ' : type === 'success' ? '✅ ' : 'ℹ️ ') + msg;
+  $('toastWrap').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 2600);
+}
+async function api(url, opts) {
+  const resp = await fetch(url, opts);
+  let data = null;
+  try { data = await resp.json(); } catch (e) {}
+  if (!resp.ok || !data || data.status !== 200) {
+    throw new Error((data && data.message) || ('HTTP ' + resp.status));
+  }
+  return data.result;
+}
+function avatarColor(i) { return USER_COLORS[i % USER_COLORS.length]; }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function yuan(fen) { return (fen / 100).toFixed(2); }
+function tag(type, text) {
+  const map = { success: 'tag-success', danger: 'tag-danger', info: 'tag-info', warning: 'tag-warning', neutral: 'tag-neutral' };
+  return '<span class="tag ' + (map[type] || 'tag-neutral') + '">' + text + '</span>';
+}
+function typeTag(t) {
+  return { recharge: tag('success', '充值'), consume: tag('danger', '消费'), transfer_in: tag('info', '转入'),
+    transfer_out: tag('warning', '转出'), refund: tag('success', '退款'), reversal: tag('warning', '冲正') }[t] || tag('neutral', t);
+}
+function statusTag(s) {
+  return s === 'settled' ? tag('success', '已入账') : s === 'failed' ? tag('danger', '入账失败') :
+    s === 'updated' ? tag('info', '已修正') : s === 'reversed' ? tag('neutral', '已撤销') : tag('neutral', s || '未知');
+}
+// ================= 统一分页 + 排序 =================
+const LIST_KEY = { w: 'wallets', b: 'bills', l: 'logs' };
+const LIST_LOAD = { w: loadWallets, b: loadBills, l: loadLogs };
+
+function renderPager(prefix, cur, total, pageSize, loadFn) {
+  const infoEl = $(prefix + 'Info'), pagesEl = $(prefix + 'Pages');
+  const pages = Math.max(Math.ceil(total / pageSize), 1);
+  infoEl.textContent = '共 ' + total + ' 条 · 第 ' + cur + '/' + pages + ' 页';
+  let html = '<select class="select" style="min-width:72px;height:30px;font-size:12px;padding:0 6px" onchange="setPageSize(\'' + prefix + '\', this.value)">' +
+    [10, 20, 50, 100].map(n => '<option value="' + n + '"' + (n === pageSize ? ' selected' : '') + '>' + n + '/页</option>').join('') + '</select>';
+  html += '<button ' + (cur <= 1 ? 'disabled' : 'onclick="' + loadFn + '(1)"') + '>«</button>';
+  let start = Math.max(1, cur - 2), end = Math.min(pages, start + 4);
+  start = Math.max(1, end - 4);
+  for (let i = start; i <= end; i++) html += '<button class="' + (i === cur ? 'active' : '') + '" onclick="' + loadFn + '(' + i + ')">' + i + '</button>';
+  html += '<button ' + (cur >= pages ? 'disabled' : 'onclick="' + loadFn + '(' + pages + ')"') + '>»</button>';
+  pagesEl.innerHTML = html;
+}
+
+function setPageSize(prefix, n) {
+  state[LIST_KEY[prefix]].pageSize = parseInt(n);
+  state[LIST_KEY[prefix]].page = 1;
+  LIST_LOAD[prefix](1);
+}
+
+function sortList(prefix, sortBy) {
+  const s = state[LIST_KEY[prefix]];
+  if (s.sortBy === sortBy) s.order = s.order === 'desc' ? 'asc' : 'desc';
+  else { s.sortBy = sortBy; s.order = 'desc'; }
+  s.page = 1;
+  LIST_LOAD[prefix](1);
+}
+
+function updateSortArrows(prefix) {
+  const s = state[LIST_KEY[prefix]];
+  document.querySelectorAll('#panel-' + prefix + ' th.sortable').forEach(th => {
+    const span = th.querySelector('.sort-mark');
+    if (span) span.textContent = th.dataset.sort === s.sortBy ? (s.order === 'desc' ? '▼' : '▲') : '';
+  });
+}
+
+// ================= 确认弹窗（撤销/冲正等敏感操作） =================
+let cfFn = null;
+function confirmAction(title, desc, fn) {
+  $('cfTitle').textContent = title;
+  $('cfDesc').innerHTML = desc;
+  cfFn = fn;
+  $('maskConfirm').classList.add('show');
+}
+function doConfirm() {
+  $('maskConfirm').classList.remove('show');
+  const fn = cfFn; cfFn = null;
+  if (fn) fn();
+}
+
+// ================= 加载数据 =================
+async function loadStats() {
+  try {
+    const s = await api('/billing/api/admin/stats');
+    state.stats = s;
+    $('stUsers').innerHTML = s.user_count;
+    $('stOrgs').textContent = s.org_count + ' 个部门';
+    $('stBalance').innerHTML = s.total_balance_yuan + '<small>元</small>';
+    $('stBalanceUsers').textContent = '覆盖 ' + s.balance_user_count + ' 个用户';
+    $('stRecharge').innerHTML = s.total_recharge_yuan + '<small>元</small>';
+    $('stConsume').innerHTML = s.total_consume_yuan + '<small>元</small>';
+    $('stBills').textContent = s.bill_count + ' 条账单';
+    $('stToday').innerHTML = s.today_consume_yuan + '<small>元</small>';
+    // 组织树：点中心 = 展开/收起部门；点部门 = 行下方内联展开部门详情
+    const centers = s.centers || [];
+    const totalConsumeFen = s.total_consume_fen || 0;
+    $('orgBody').innerHTML = centers.length ? centers.map((c, ci) => {
+      const cp = totalConsumeFen ? (c.consume_fen / totalConsumeFen * 100) : 0;
+      const deptRows = c.depts.map((d, di) => {
+        const dp = totalConsumeFen ? (d.consume_fen / totalConsumeFen * 100) : 0;
+        const hasData = !!d.org;
+        return '<tr class="org-dept' + (hasData ? ' clickable' : '') + '" data-ci="' + ci + '" data-org="' +
+          esc(d.org).replace(/"/g, '&quot;') + '" style="display:none" ' +
+          (hasData ? 'onclick="toggleOrgDetail(this)"' : '') + ' title="' + (hasData ? '点击展开/收起部门详情' : '') + '">' +
+          '<td><span class="org-arrow" id="darrow' + ci + '_' + di + '">' + (hasData ? '▶' : '·') + '</span> <span class="org-muted">├</span> ' + esc(d.name) + '</td>' +
+          '<td style="text-align:right" class="mono">' + d.user_count + '</td>' +
+          '<td style="text-align:right" class="mono">' + d.consume_yuan.toFixed(2) + '</td>' +
+          '<td><div class="bar"><div class="bar-fill dim" style="width:' + dp.toFixed(1) + '%"></div></div></td></tr>';
+      }).join('');
+      return '<tr class="org-center" data-ci="' + ci + '" onclick="toggleCenter(' + ci + ')" title="点击展开/收起部门列表">' +
+        '<td><span class="org-arrow" id="arrow' + ci + '">▶</span> ' + esc(c.name) +
+        ' <span class="org-muted">' + c.depts.length + ' 个部门</span></td>' +
+        '<td style="text-align:right" class="mono">' + c.user_count + '</td>' +
+        '<td style="text-align:right" class="mono">' + c.consume_yuan.toFixed(2) + '</td>' +
+        '<td><div class="bar"><div class="bar-fill" style="width:' + cp.toFixed(1) + '%"></div></div></td></tr>' + deptRows;
+    }).join('') : '<tr><td colspan="4" class="empty">暂无组织数据</td></tr>';
+    $('orgSummary').textContent = centers.length + ' 个中心 · ' +
+      centers.reduce((n, c) => n + c.depts.length, 0) + ' 个部门';
+    // 中心下拉（余额/明细筛选用）
+    const opts = ['<option value="">全部中心</option>'].concat(centers.map(c => '<option>' + esc(c.name) + '</option>')).join('');
+    $('wCenterSel').innerHTML = opts;
+    $('bCenterSel').innerHTML = opts;
+    // 重置联动部门下拉
+    onCenterChange('w');
+    onCenterChange('b');
+  } catch (e) {
+    toast('统计加载失败：' + e.message, 'error');
+  }
+}
+
+// ================= 可搜索用户选择（ab_user 远程搜索） =================
+const searchSelects = {};
+function initSearchSelect(inputId, dropId) {
+  const input = $(inputId), drop = $(dropId);
+  const sel = { input, drop, picked: null };
+  searchSelects[inputId] = sel;
+  let timer = null;
+  async function search(kw) {
+    try {
+      const r = await api('/billing/api/users?keyword=' + encodeURIComponent(kw) + '&limit=20');
+      const users = r.users || [];
+      sel.picked = null;
+      if (users.length === 0) {
+        drop.innerHTML = '<div class="ss-empty">ab_user 中未找到匹配用户</div>';
+      } else {
+        drop.innerHTML = users.map(u => {
+          const a = (u.username || '?')[0].toUpperCase();
+          return '<div class="ss-item" data-u="' + esc(u.username) + '" data-org="' + esc(u.org) + '" data-name="' + esc(u.first_name) + '">' +
+            '<div class="user-cell"><div class="user-avatar">' + esc(a) + '</div>' +
+            '<div>' + esc(u.username) + '<div class="ss-meta">' + esc(u.first_name || '') + ' · ' + esc(u.org || '未分组') + '</div></div></div>' +
+            '<div class="ss-right"><span class="org-chip">' + esc(u.org || '-') + '</span></div></div>';
+        }).join('');
+      }
+      drop.classList.add('show');
+    } catch (e) {
+      drop.innerHTML = '<div class="ss-empty">搜索失败：' + esc(e.message) + '</div>';
+      drop.classList.add('show');
+    }
+  }
+  input.addEventListener('input', () => {
+    sel.picked = null;
+    clearTimeout(timer);
+    timer = setTimeout(() => search(input.value.trim()), 300);
+  });
+  input.addEventListener('focus', () => { if (!drop.classList.contains('show')) search(input.value.trim()); });
+  input.addEventListener('blur', () => setTimeout(() => drop.classList.remove('show'), 180));
+  drop.addEventListener('mousedown', e => e.preventDefault());  // 防止 blur 抢先关闭
+  drop.addEventListener('click', e => {
+    const item = e.target.closest('.ss-item');
+    if (item && item.dataset.u) {
+      input.value = item.dataset.u;
+      sel.picked = item.dataset.u;
+      drop.classList.remove('show');
+    }
+  });
+}
+function requirePicked(inputId) {
+  const sel = searchSelects[inputId];
+  if (!sel || !sel.picked) return null;
+  return sel.picked;
+}
+
+async function loadWallets(page) {
+  if (page) state.wallets.page = page;
+  const s = state.wallets;
+  try {
+    const params = new URLSearchParams({ page: s.page, page_size: s.pageSize, sort_by: s.sortBy, order: s.order });
+    if ($('wCenterSel').value) params.set('center', $('wCenterSel').value);
+    if (orgPick.w) params.set('org', orgPick.w.org);
+    if ($('wUser').value.trim()) params.set('username', $('wUser').value.trim());
+    const r = await api('/billing/api/admin/wallets?' + params);
+    const start = (s.page - 1) * s.pageSize;
+    const rows = r.wallets.map((w, i) => {
+      const neg = w.balance_yuan < 0;
+      const a = (w.username === '-' ? '?' : w.username[0].toUpperCase());
+      return '<tr><td class="muted">' + (start + i + 1) + '</td>' +
+        '<td><div class="user-cell"><div class="user-avatar ' + avatarColor(i) + '">' + esc(a) + '</div>' + esc(w.username) + '</div></td>' +
+        '<td><span class="org-chip">' + esc(w.org) + '</span></td>' +
+        '<td style="text-align:right" class="mono ' + (neg ? 'amount-minus' : '') + '">' + yuan(w.balance_fen) + '</td>' +
+        '<td style="text-align:right" class="mono muted">' + w.balance_fen + '</td>' +
+        '<td class="muted">' + esc(w.updated_on) + '</td></tr>';
+    }).join('');
+    $('walletBody').innerHTML = rows || '<tr><td colspan="6" class="empty">暂无钱包数据</td></tr>';
+    $('badgeWallet').textContent = r.count;
+    renderPager('w', s.page, r.count, s.pageSize, 'loadWallets');
+    updateSortArrows('w');
+  } catch (e) { toast('余额加载失败：' + e.message, 'error'); }
+}
+
+async function loadBills(page) {
+  if (page) state.bills.page = page;
+  const s = state.bills;
+  try {
+    const params = new URLSearchParams({ page: s.page, page_size: s.pageSize, sort_by: s.sortBy, order: s.order });
+    if ($('bPod').value.trim()) params.set('pod_name', $('bPod').value.trim());
+    if ($('bUser').value.trim()) params.set('username', $('bUser').value.trim());
+    if ($('bCenterSel').value) params.set('center', $('bCenterSel').value);
+    if (orgPick.b) params.set('org', orgPick.b.org);
+    if ($('bStart').value) params.set('start_time', $('bStart').value);
+    if ($('bEnd').value) params.set('end_time', $('bEnd').value);
+    const r = await api('/billing/api/admin/bills?' + params);
+    const rows = r.bills.map(b => {
+      const res = (b.cpu || 0) + 'C / ' + (b.memory || 0) + 'G' + (b.gpu_num ? ' / ' + b.gpu_num + 'GPU' : '');
+      const canReverse = b.source === 'manual' && b.status === 'settled';
+      const opCell = canReverse
+        ? '<button class="action-btn" onclick="reverseBill(' + b.id + ', \'' + esc(b.pod_name).replace(/'/g, "\\'") + '\', ' + (b.amount_fen || 0) + ')">撤销</button>'
+        : '<span class="muted">-</span>';
+      return '<tr><td class="muted">' + b.id + '</td>' +
+        '<td class="mono">' + esc(b.pod_name) + '</td>' +
+        '<td>' + esc(b.task_name || '-') + '</td>' +
+        '<td>' + esc(b.username || '-') + '</td>' +
+        '<td><span class="org-chip">' + esc(b.org || '-') + '</span></td>' +
+        '<td style="text-align:right" class="muted mono">' + res + '</td>' +
+        '<td style="text-align:right" class="mono">' + (b.duration_seconds ? (b.duration_seconds / 3600).toFixed(2) : '0') + 'h</td>' +
+        '<td style="text-align:right" class="mono amount-minus">' + yuan(b.amount_fen) + '</td>' +
+        '<td>' + statusTag(b.status) + '</td>' +
+        '<td>' + (b.source === 'manual' ? tag('info', '手动') : tag('neutral', '外部推送')) + '</td>' +
+        '<td class="muted">' + esc(b.created_on) + '</td>' +
+        '<td>' + opCell + '</td></tr>';
+    }).join('');
+    $('billBody').innerHTML = rows || '<tr><td colspan="12" class="empty">暂无费用明细</td></tr>';
+    $('badgeBill').textContent = r.count;
+    renderPager('b', s.page, r.count, s.pageSize, 'loadBills');
+    updateSortArrows('b');
+  } catch (e) { toast('明细加载失败：' + e.message, 'error'); }
+}
+
+async function loadLogs(page) {
+  if (page) state.logs.page = page;
+  const s = state.logs;
+  try {
+    const params = new URLSearchParams({ page: s.page, page_size: s.pageSize, sort_by: s.sortBy, order: s.order });
+    if ($('lTypeSel').value) params.set('type', $('lTypeSel').value);
+    if ($('lUser').value.trim()) params.set('username', $('lUser').value.trim());
+    const r = await api('/billing/api/admin/logs?' + params);
+    const rows = r.logs.map(l => {
+      const amtCls = l.type === 'consume' || l.type === 'transfer_out' ? 'amount-minus' : 'amount-plus';
+      const sign = l.type === 'consume' || l.type === 'transfer_out' ? '-' : '+';
+      const canReverse = (l.type === 'recharge' || l.type === 'transfer_out') && !l.reversed;
+      const opCell = canReverse
+        ? '<button class="action-btn" onclick="reverseLog(' + l.id + ', \'' + l.type + '\', ' + (l.amount_fen || 0) + ')">' + (l.type === 'recharge' ? '冲正' : '撤销') + '</button>'
+        : (l.reversed ? '<span class="tag tag-neutral">已冲正</span>' : '<span class="muted">-</span>');
+      return '<tr><td class="muted">' + l.id + '</td>' +
+        '<td>' + typeTag(l.type) + '</td>' +
+        '<td>' + esc(l.from_username) + '</td>' +
+        '<td>' + esc(l.to_username) + '</td>' +
+        '<td style="text-align:right" class="mono ' + amtCls + '">' + sign + yuan(l.amount_fen) + '</td>' +
+        '<td style="text-align:right" class="mono muted">' + l.balance_before_yuan + '</td>' +
+        '<td style="text-align:right" class="mono">' + l.balance_after_yuan + '</td>' +
+        '<td>' + esc(l.operator) + '</td>' +
+        '<td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(l.remark) + '">' + esc(l.remark || '-') + '</td>' +
+        '<td class="muted">' + esc(l.created_on) + '</td>' +
+        '<td>' + opCell + '</td></tr>';
+    }).join('');
+    $('logBody').innerHTML = rows || '<tr><td colspan="11" class="empty">暂无资金流水</td></tr>';
+    $('badgeLog').textContent = r.count;
+    renderPager('l', s.page, r.count, s.pageSize, 'loadLogs');
+    updateSortArrows('l');
+  } catch (e) { toast('流水加载失败：' + e.message, 'error'); }
+}
+
+// ================= 撤销 / 冲正 =================
+function reverseBill(id, pod, fen) {
+  confirmAction('撤销账单 #' + id,
+    '将撤销账单 <b>' + esc(pod) + '</b>（' + yuan(fen) + ' 元），退回用户余额并追加退款流水。' +
+    '<br><span class="muted">仅"手动"来源的账单可撤销，外部推送账单请由推送系统修正。</span>',
+    async () => {
+      try {
+        const r = await api('/billing/api/admin/bill/' + id + '/reverse', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        toast('账单已撤销，已退回 ' + yuan(r.amount_fen) + ' 元', 'success');
+        loadBills(state.bills.page); loadWallets(); loadLogs(); loadStats();
+      } catch (e) { toast('撤销失败：' + e.message, 'error'); }
+    });
+}
+function reverseLog(id, type, fen) {
+  const desc = type === 'recharge'
+    ? '将冲正充值流水 #' + id + '（' + yuan(fen) + ' 元）：从用户钱包扣回该笔充值。<br><span class="muted">用户余额不足时无法冲正。</span>'
+    : '将撤销转账流水 #' + id + '（' + yuan(fen) + ' 元）：转入方扣回、转出方退回，双向冲正。<br><span class="muted">转入方余额不足时无法撤销。</span>';
+  confirmAction((type === 'recharge' ? '冲正充值' : '撤销转账') + ' #' + id, desc, async () => {
+    try {
+      await api('/billing/api/admin/log/' + id + '/reverse', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      toast('冲正成功', 'success');
+      loadLogs(state.logs.page); loadWallets(); loadStats();
+    } catch (e) { toast('冲正失败：' + e.message, 'error'); }
+  });
+}
+
+// ================= 交互 =================
+function switchTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  ['wallet', 'bill', 'log'].forEach(t => { $('panel-' + t).style.display = t === tab ? '' : 'none'; });
+}
+function resetBillFilter() {
+  ['bPod', 'bUser', 'bStart', 'bEnd'].forEach(id => { $(id).value = ''; });
+  $('bCenterSel').value = '';
+  onCenterChange('b');
+  loadBills(1);
+}
+// 中心 → 部门：选中心后部门搜索限定该中心；不选中心可跨中心按部门名搜索
+const orgPick = { w: null, b: null };  // {org, name}
+
+function onCenterChange(prefix) {
+  clearOrgPick(prefix, true);
+  const center = $(prefix + 'CenterSel').value;
+  $(prefix + 'OrgInput').placeholder = center ? '搜索' + center + '下的部门…' : '搜索部门（可跨中心）…';
+  (prefix === 'w' ? loadWallets : loadBills)(1);
+}
+
+function initOrgSelect(prefix) {
+  const input = $(prefix + 'OrgInput'), drop = $(prefix + 'OrgDrop');
+  let timer = null;
+  async function search(kw) {
+    try {
+      const center = $(prefix + 'CenterSel').value;
+      const params = new URLSearchParams({ keyword: kw, limit: 20 });
+      if (center) params.set('center', center);
+      const r = await api('/billing/api/admin/orgs?' + params);
+      const orgs = r.orgs || [];
+      if (!orgs.length) {
+        drop.innerHTML = '<div class="ss-empty">' + (kw ? '未找到匹配部门' : '输入部门名开始搜索，可跨中心') + '</div>';
+      } else {
+        drop.innerHTML = orgs.map(o =>
+          '<div class="ss-item" data-org="' + esc(o.org).replace(/"/g, '&quot;') + '" data-name="' + esc(o.name).replace(/"/g, '&quot;') + '">' +
+          '<div class="user-cell"><div>' + esc(o.name) + '<div class="ss-meta">' + esc(o.center) + '</div></div></div>' +
+          '<span class="org-chip">' + esc(o.center) + '</span></div>').join('');
+      }
+      drop.classList.add('show');
+    } catch (e) { drop.innerHTML = '<div class="ss-empty">搜索失败</div>'; drop.classList.add('show'); }
+  }
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => search(input.value.trim()), 300);
+  });
+  input.addEventListener('focus', () => search(input.value.trim()));
+  input.addEventListener('blur', () => setTimeout(() => drop.classList.remove('show'), 180));
+  drop.addEventListener('mousedown', e => e.preventDefault());
+  drop.addEventListener('click', e => {
+    const item = e.target.closest('.ss-item');
+    if (item && item.dataset.org) {
+      orgPick[prefix] = { org: item.dataset.org, name: item.dataset.name };
+      input.value = item.dataset.name;
+      drop.classList.remove('show');
+      updateOrgClear(prefix);
+      (prefix === 'w' ? loadWallets : loadBills)(1);
+    }
+  });
+}
+function updateOrgClear(prefix) {
+  $(prefix + 'OrgClear').style.display = orgPick[prefix] ? '' : 'none';
+}
+function clearOrgPick(prefix, silent) {
+  orgPick[prefix] = null;
+  $(prefix + 'OrgInput').value = '';
+  updateOrgClear(prefix);
+  if (!silent) (prefix === 'w' ? loadWallets : loadBills)(1);
+}
+function toggleCenter(ci) {
+  const rows = document.querySelectorAll('.org-dept[data-ci="' + ci + '"]');
+  const arrow = $('arrow' + ci);
+  const show = arrow.textContent === '▶';
+  rows.forEach(r => r.style.display = show ? '' : 'none');
+  arrow.textContent = show ? '▼' : '▶';
+  if (!show) {
+    // 收起中心时同步收起其下部门的内联详情
+    document.querySelectorAll('.org-detail-row').forEach(r => r.remove());
+    document.querySelectorAll('.org-dept.clickable .org-arrow').forEach(a => { if (a.textContent === '▼') a.textContent = '▶'; });
+  }
+}
+function searchOrg() {
+  const kw = ($('orgSearch').value || '').trim().toLowerCase();
+  document.querySelectorAll('.org-center').forEach(r => {
+    const hit = !kw || r.textContent.toLowerCase().includes(kw);
+    r.style.display = hit ? '' : 'none';
+    if (hit && kw) {  // 搜索时自动展开命中的中心
+      const ci = r.dataset.ci;
+      document.querySelectorAll('.org-dept[data-ci="' + ci + '"]').forEach(d => d.style.display = '');
+      const arrow = $('arrow' + ci);
+      if (arrow) arrow.textContent = '▼';
+    }
+  });
+  if (kw) {
+    document.querySelectorAll('.org-dept').forEach(d => {
+      d.style.display = d.textContent.toLowerCase().includes(kw) ? '' : 'none';
+    });
+  }
+}
+
+// ================= 组织架构面板收起/展开（几百个中心时避免撑满页面） =================
+function toggleOrgPanel() {
+  const wrap = $('orgTableWrap');
+  const btn = $('orgToggleBtn');
+  const collapsed = wrap.style.display === 'none';
+  wrap.style.display = collapsed ? '' : 'none';
+  btn.textContent = collapsed ? '收起 ▾' : '展开 ▴';
+}
+
+// ================= 部门内联详情（点击部门行在其下方展开） =================
+function toggleOrgDetail(tr) {
+  const org = tr.dataset.org;
+  const arrow = tr.querySelector('.org-arrow');
+  // 若该部门已展开则收起
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('org-detail-row')) {
+    next.remove();
+    arrow.textContent = '▶';
+    return;
+  }
+  // 收起其他已展开的部门详情
+  document.querySelectorAll('.org-detail-row').forEach(r => r.remove());
+  document.querySelectorAll('.org-dept.clickable .org-arrow').forEach(a => { if (a.textContent === '▼') a.textContent = '▶'; });
+  // 在该部门行下方插入详情行
+  const row = document.createElement('tr');
+  row.className = 'org-detail-row';
+  row.innerHTML = '<td colspan="4" style="padding:0;background:#fbfcff"><div class="org-inline"><div class="oi-loading"><span class="loading"></span> 加载部门数据…</div></div></td>';
+  tr.after(row);
+  arrow.textContent = '▼';
+  loadOrgInline(org, row.querySelector('.org-inline'));
+}
+
+async function loadOrgInline(org, el) {
+  const p = new URLSearchParams({ org });
+  try {
+    const [s, w, b, l] = await Promise.all([
+      api('/billing/api/admin/org_stats?' + p),
+      api('/billing/api/admin/wallets?' + p),
+      api('/billing/api/admin/bills?' + p + '&page=1&page_size=5'),
+      api('/billing/api/admin/logs?' + p + '&page=1&page_size=5'),
+    ]);
+    // 成员列
+    const members = w.wallets.length ? w.wallets.map(u =>
+      '<tr><td class="mono">' + esc(u.username) + '</td><td style="text-align:right" class="mono ' + (u.balance_yuan < 0 ? 'amount-minus' : '') + '">' + yuan(u.balance_fen) + '</td></tr>'
+    ).join('') : '<tr><td colspan="2" class="oi-empty">暂无成员</td></tr>';
+    // 明细列
+    const bills = b.bills.length ? b.bills.map(x =>
+      '<tr><td class="mono" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(x.pod_name) + '">' + esc(x.pod_name) + '</td>' +
+      '<td style="text-align:right" class="mono amount-minus">' + yuan(x.amount_fen) + '</td>' +
+      '<td class="muted" style="text-align:right">' + esc(x.created_on.slice(5, 16)) + '</td></tr>'
+    ).join('') : '<tr><td colspan="3" class="oi-empty">暂无费用明细</td></tr>';
+    // 流水列
+    const logs = l.logs.length ? l.logs.map(x => {
+      const cls = x.type === 'consume' || x.type === 'transfer_out' ? 'amount-minus' : 'amount-plus';
+      const sign = x.type === 'consume' || x.type === 'transfer_out' ? '-' : '+';
+      return '<tr><td>' + typeTag(x.type) + '</td>' +
+        '<td style="text-align:right" class="mono ' + cls + '">' + sign + yuan(x.amount_fen) + '</td>' +
+        '<td class="muted" style="text-align:right">' + esc(x.created_on.slice(5, 16)) + '</td></tr>';
+    }).join('') : '<tr><td colspan="3" class="oi-empty">暂无资金流水</td></tr>';
+
+    el.innerHTML =
+      '<div class="oi-head">' +
+        '<b>' + esc(org) + '</b>' +
+        '<span class="oi-summary">' + s.user_count + ' 位成员 · 累计消费 <b class="mono">' + s.total_consume_yuan.toFixed(2) + '</b> 元 · ' + s.bill_count + ' 笔账单</span>' +
+        '<span class="oi-actions">' +
+          '<button class="btn btn-ghost btn-sm" onclick="exportOrgInline(\'' + esc(org).replace(/'/g, "\\'") + '\', \'bills\')">⭳ 明细CSV</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="exportOrgInline(\'' + esc(org).replace(/'/g, "\\'") + '\', \'logs\')">⭳ 流水CSV</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="oi-cols">' +
+        '<div class="oi-col"><h4>👥 成员 <span class="cnt">' + w.count + '</span></h4><table class="oi-table"><tbody>' + members + '</tbody></table></div>' +
+        '<div class="oi-col"><h4>🧾 费用明细 <span class="cnt">' + b.count + '</span></h4><table class="oi-table"><tbody>' + bills + '</tbody></table></div>' +
+        '<div class="oi-col"><h4>📒 资金流水 <span class="cnt">' + l.count + '</span></h4><table class="oi-table"><tbody>' + logs + '</tbody></table></div>' +
+      '</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="oi-loading" style="color:var(--danger)">加载失败：' + esc(e.message) + '</div>';
+  }
+}
+
+function exportOrgInline(org, kind) {
+  window.location = '/billing/api/admin/export?kind=' + kind + '&org=' + encodeURIComponent(org);
+}
+function exportCsv(kind) {
+  const params = new URLSearchParams({ kind });
+  if (kind === 'bills') {
+    if ($('bPod').value.trim()) params.set('pod_name', $('bPod').value.trim());
+    if ($('bUser').value.trim()) params.set('username', $('bUser').value.trim());
+    if ($('bCenterSel').value) params.set('center', $('bCenterSel').value);
+    if (orgPick.b) params.set('org', orgPick.b.org);
+    if ($('bStart').value) params.set('start_time', $('bStart').value);
+    if ($('bEnd').value) params.set('end_time', $('bEnd').value);
+  } else {
+    if ($('lTypeSel').value) params.set('type', $('lTypeSel').value);
+    if ($('lUser').value.trim()) params.set('username', $('lUser').value.trim());
+  }
+  window.location = '/billing/api/admin/export?' + params.toString();
+}
+const MASK_IDS = { recharge: 'maskRecharge', deduct: 'maskDeduct', transfer: 'maskTransfer' };
+function openModal(type) {
+  if (type === 'deduct' && !$('dtRows').children.length) addDeductRow();
+  $(MASK_IDS[type]).classList.add('show');
+}
+function closeModal(type) {
+  $(MASK_IDS[type]).classList.remove('show');
+  if (type === 'deduct') { $('dtRows').innerHTML = ''; $('dtRemark').value = ''; }
+}
+document.querySelectorAll('.mask').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); }));
+
+const MAX_AMOUNT_YUAN = 1000000;  // 单笔上限 100 万元
+
+async function doRecharge() {
+  const username = requirePicked('rcUser');
+  const amount = parseFloat($('rcAmount').value), remark = $('rcRemark').value.trim();
+  if (!username) return toast('请从搜索结果中选择 ab_user 用户', 'error');
+  if (!amount || amount <= 0) return toast('请输入有效金额', 'error');
+  if (amount > MAX_AMOUNT_YUAN) return toast('单笔金额不能超过 ' + MAX_AMOUNT_YUAN + ' 元', 'error');
+  const btn = $('rcSubmit');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 处理中';
+  try {
+    const r = await api('/billing/api/recharge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, amount_fen: Math.round(amount * 100), remark })
+    });
+    toast('充值成功：' + r.username + ' 余额 ' + yuan(r.balance_fen) + ' 元', 'success');
+    closeModal('recharge');
+    ['rcUser', 'rcAmount', 'rcRemark'].forEach(id => { $(id).value = ''; });
+    searchSelects.rcUser.picked = null;
+    loadStats(); loadWallets(1); loadLogs(1);
+  } catch (e) { toast('充值失败：' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '确认充值';
+}
+
+let dtRowSeq = 0;
+function addDeductRow() {
+  dtRowSeq++;
+  const n = dtRowSeq;
+  const row = document.createElement('div');
+  row.className = 'dt-row';
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+  row.innerHTML =
+    '<div class="search-select" style="flex:1;min-width:150px">' +
+      '<input class="input" id="dtU' + n + '" placeholder="搜索用户…" autocomplete="off">' +
+      '<div class="ss-dropdown" id="dtDrop' + n + '"></div>' +
+    '</div>' +
+    '<input class="input" id="dtA' + n + '" type="number" min="0.01" step="0.01" placeholder="金额(元)" style="width:110px">' +
+    '<input class="input" id="dtT' + n + '" placeholder="任务名" style="width:140px">' +
+    '<button class="btn btn-ghost btn-sm" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
+  $('dtRows').appendChild(row);
+  initSearchSelect('dtU' + n, 'dtDrop' + n);
+}
+
+async function doDeduct() {
+  const remark = $('dtRemark').value.trim();
+  if (!remark) return toast('请填写扣费原因（审计依据）', 'error');
+  const items = [];
+  for (let i = 1; i <= dtRowSeq; i++) {
+    const u = requirePicked('dtU' + i);
+    const aEl = $('dtA' + i), tEl = $('dtT' + i);
+    if (!aEl) continue;  // 行已被删除
+    const amount = parseFloat(aEl.value);
+    if (!u && !amount) continue;  // 跳过全空行
+    if (!u) return toast('第 ' + i + ' 行：请从搜索结果中选择用户', 'error');
+    if (!amount || amount <= 0) return toast('第 ' + i + ' 行：请输入有效金额', 'error');
+    if (amount > MAX_AMOUNT_YUAN) return toast('第 ' + i + ' 行：金额不能超过 ' + MAX_AMOUNT_YUAN + ' 元', 'error');
+    items.push({ username: u, amount_fen: Math.round(amount * 100), task_name: (tEl ? tEl.value : '').trim(), remark });
+  }
+  if (!items.length) return toast('请至少填写一行扣费明细', 'error');
+  const btn = $('dtSubmit');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 处理中';
+  try {
+    const r = await api('/billing/api/deduct', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(items)
+    });
+    if (r.failed === 0) {
+      toast('批量扣费完成：成功 ' + r.ok + ' 条', 'success');
+    } else {
+      const errs = (r.results || []).filter(x => x.result === 'error').map(x => x.username + '(' + x.reason + ')').slice(0, 3).join('；');
+      toast('成功 ' + r.ok + ' 条，失败 ' + r.failed + ' 条' + (errs ? '：' + errs : ''), r.ok > 0 ? 'success' : 'error');
+    }
+    closeModal('deduct');
+    $('dtRows').innerHTML = '';
+    $('dtRemark').value = '';
+    loadStats(); loadWallets(1); loadBills(1); loadLogs(1);
+  } catch (e) { toast('扣费失败：' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '确认扣费';
+}
+
+async function doTransfer() {
+  const from = requirePicked('trFrom'), to = requirePicked('trTo');
+  const amount = parseFloat($('trAmount').value), remark = $('trRemark').value.trim();
+  if (!from || !to) return toast('请从搜索结果中选择 ab_user 用户', 'error');
+  if (from === to) return toast('转出和转入不能是同一用户', 'error');
+  if (!amount || amount <= 0) return toast('请输入有效金额', 'error');
+  if (amount > MAX_AMOUNT_YUAN) return toast('单笔金额不能超过 ' + MAX_AMOUNT_YUAN + ' 元', 'error');
+  const btn = $('trSubmit');
+  btn.disabled = true; btn.innerHTML = '<span class="loading"></span> 处理中';
+  try {
+    const r = await api('/billing/api/transfer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_username: from, to_username: to, amount_fen: Math.round(amount * 100), remark })
+    });
+    toast('转账成功：' + from + ' → ' + to + ' ' + yuan(amount * 100) + ' 元', 'success');
+    closeModal('transfer');
+    ['trFrom', 'trTo', 'trAmount', 'trRemark'].forEach(id => { $(id).value = ''; });
+    searchSelects.trFrom.picked = null; searchSelects.trTo.picked = null;
+    loadStats(); loadWallets(1); loadLogs(1);
+  } catch (e) { toast('转账失败：' + e.message, 'error'); }
+  btn.disabled = false; btn.textContent = '确认转账';
+}
+
+function refreshAll() { loadStats(); loadWallets(); loadBills(); loadLogs(); }
+
+// ================= 启动 =================
+initSearchSelect('rcUser', 'rcUserDrop');
+initSearchSelect('trFrom', 'trFromDrop');
+initSearchSelect('trTo', 'trToDrop');
+initOrgSelect('w');
+initOrgSelect('b');
+loadStats();
+loadWallets();
+loadBills();
+loadLogs();
+</script>
+</body>
+</html>

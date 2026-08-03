@@ -1,10 +1,9 @@
 version: '3'
 services:
   redis:
-    image: bitnami/redis:4.0.14
+    image: redis:4.0.14
     restart: unless-stopped
-    environment:
-      REDIS_PASSWORD: admin
+    command: redis-server --requirepass admin
     ports:
       - "6379:6379"
 
@@ -48,6 +47,8 @@ services:
     depends_on:
       - redis
 #      - mysql
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../../myapp/static/appbuilder/frontend:/data/web/frontend
       - ../../myapp/:/home/myapp/myapp/
