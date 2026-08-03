@@ -105,7 +105,7 @@
   .stat-extra { font-size: 12px; color: var(--text-3); margin-top: 5px; }
   .stat-ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
 
-  /* ===== 计费标准（与计费控制台统一） ===== */
+  /* ===== 计费标准（与计费控制台统一，表格化） ===== */
   .price-panel {
     background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
     overflow: hidden;
@@ -116,30 +116,28 @@
   }
   .price-head b { font-size: 15px; }
   .price-head .muted { font-size: 12.5px; }
-  .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
-  .price-cell { padding: 16px 20px; border-right: 1px solid #f1f3fa; }
-  .price-cell:last-child { border-right: none; }
-  .price-cell .res { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
-  .price-cell .res-ico {
+  .price-table { width: 100%; border-collapse: collapse; }
+  .price-table th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .price-table td { padding: 12px 16px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; vertical-align: middle; }
+  .price-table tbody tr:last-child td { border-bottom: none; }
+  .pt-item td { background: #fff; }
+  .pt-model td { background: #fbfcff; }
+  .pt-opt td { padding: 9px 16px 9px 52px; color: var(--text-2); background: #fff; }
+  .pt-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .pt-name .res-ico {
     width: 28px; height: 28px; border-radius: 8px; display: inline-flex;
-    align-items: center; justify-content: center;
+    align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .price-cell .val { font-size: 24px; font-weight: 800; margin-top: 8px; font-variant-numeric: tabular-nums; }
-  .price-cell .val small { font-size: 12.5px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
-  .price-cell .meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+  .pt-opt-name { display: flex; align-items: center; gap: 8px; }
+  .pt-opt-name::before { content: '└'; color: var(--text-3); font-size: 12px; }
+  .pt-price { font-size: 17px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .pt-price small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+  .pt-opt .pt-price { font-size: 14.5px; }
+  .pt-unit { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
   .price-edit-note { font-size: 12px; color: var(--text-3); padding: 10px 20px; border-top: 1px solid #f1f3fa; }
-  .price-cell-model { padding: 14px 16px; }
-  .price-opt-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px dashed #f1f3fa; }
-  .price-opt-row:last-child { border-bottom: none; }
-  .price-opt-name { font-size: 13px; font-weight: 600; min-width: 90px; }
-  .price-opt-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
-  .price-opt-val small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
-  .price-opt-unit { font-size: 11.5px; color: var(--text-3); min-width: 62px; text-align: right; }
-  @media (max-width: 900px) {
-    .mini-stats { grid-template-columns: 1fr; }
-    .price-grid { grid-template-columns: 1fr; }
-    .price-cell { border-right: none; border-bottom: 1px solid #f1f3fa; }
-  }
 
   /* ===== 明细面板 ===== */
   .panel {
@@ -420,26 +418,36 @@ async function loadPrices() {
   try {
     const r = await api('/billing/api/prices');
     const items = r.items || [];
-    $('priceRow').innerHTML = items.map(it => {
+    let rows = '';
+    items.forEach(it => {
       const meta = ITEM_META[it.item_key] || { ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
+      const icoCell = '<span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>';
       if (it.item_type === 'model') {
-        const opts = (it.options || []).map(o =>
-          '<div class="price-opt-row">' +
-            '<div class="price-opt-name">' + esc(o.option_name) + '</div>' +
-            '<div class="price-opt-val">' + o.price_yuan + '<small>元</small></div>' +
-            '<div class="price-opt-unit">' + esc(it.unit) + '</div></div>'
-        ).join('');
-        return '<div class="price-cell price-cell-model">' +
-          '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + '</div>' +
-          opts + '</div>';
+        rows += '<tr class="pt-item pt-model">' +
+          '<td><div class="pt-name">' + icoCell + esc(it.item_name) + '</div></td>' +
+          '<td><span class="tag tag-warning">型号型</span></td>' +
+          '<td class="pt-price muted" style="font-weight:500">按型号</td>' +
+          '<td class="pt-unit">' + esc(it.unit) + '</td>' +
+          '<td class="muted">' + (it.options || []).length + ' 个型号</td></tr>';
+        (it.options || []).forEach(o => {
+          rows += '<tr class="pt-opt">' +
+            '<td><div class="pt-opt-name">' + esc(o.option_name) + '</div></td><td></td>' +
+            '<td class="pt-price">' + o.price_yuan + '<small>元</small></td>' +
+            '<td class="pt-unit">' + esc(it.unit) + '</td><td class="muted">—</td></tr>';
+        });
+      } else {
+        rows += '<tr class="pt-item">' +
+          '<td><div class="pt-name">' + icoCell + esc(it.item_name) + '</div></td>' +
+          '<td><span class="tag tag-neutral">数量型</span></td>' +
+          '<td class="pt-price">' + it.price_yuan + '<small>元</small></td>' +
+          '<td class="pt-unit">' + esc(it.unit) + '</td><td class="muted">—</td></tr>';
       }
-      return '<div class="price-cell">' +
-        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + '</div>' +
-        '<div class="val">' + it.price_yuan + '<small>元</small></div>' +
-        '<div class="meta">' + esc(it.unit) + '</div></div>';
-    }).join('') || '<div class="price-cell"><div class="muted">尚未配置计费标准</div></div>';
+    });
+    $('priceRow').innerHTML = rows
+      ? '<table class="price-table"><thead><tr><th>计费项</th><th>类型</th><th style="text-align:right">单价</th><th>单位</th><th>型号</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div style="padding:26px;text-align:center;color:var(--text-3)">尚未配置计费标准</div>';
   } catch (e) {
-    $('priceRow').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>';
+    $('priceRow').innerHTML = '<div style="padding:26px;text-align:center;color:var(--text-3)">计费标准加载失败</div>';
   }
 }
 

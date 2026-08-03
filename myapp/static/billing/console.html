@@ -111,28 +111,39 @@
   .price-head b { font-size: 15px; }
   .price-head .muted { font-size: 12.5px; }
   .price-head .actions { margin-left: auto; display: flex; gap: 8px; }
-  .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
-  .price-cell { padding: 16px 20px; border-right: 1px solid #f1f3fa; }
-  .price-cell:last-child { border-right: none; }
-  .price-cell .res { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
-  .price-cell .res-ico {
-    width: 28px; height: 28px; border-radius: 8px; display: inline-flex;
-    align-items: center; justify-content: center; font-size: 14px;
+  /* 计费标准：表格化排版（一行一个计费项，型号子行缩进） */
+  .price-table { width: 100%; border-collapse: collapse; }
+  .price-table th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
   }
-  .price-cell .val { font-size: 24px; font-weight: 800; margin-top: 8px; font-variant-numeric: tabular-nums; }
-  .price-cell .val small { font-size: 12.5px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
-  .price-cell .meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
-  .price-cell .input { width: 100%; height: 36px; margin-top: 8px; text-align: right; }
+  .price-table td { padding: 12px 16px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; vertical-align: middle; }
+  .price-table tbody tr:last-child td { border-bottom: none; }
+  .pt-item td { background: #fff; }
+  .pt-model td { background: #fbfcff; }
+  .pt-item:hover td { background: #f7f9fe; }
+  .pt-opt td { padding: 9px 16px 9px 52px; color: var(--text-2); background: #fff; }
+  .pt-opt:hover td { background: #f7f9fe; }
+  .pt-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .pt-name .res-ico {
+    width: 28px; height: 28px; border-radius: 8px; display: inline-flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .pt-opt-name { display: flex; align-items: center; gap: 8px; }
+  .pt-opt-name::before { content: '└'; color: var(--text-3); font-size: 12px; }
+  .pt-price { font-size: 17px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .pt-price small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+  .pt-unit { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+  .pt-opt .pt-price { font-size: 14.5px; }
+  .pt-price .input { width: 110px; height: 32px; font-size: 13px; text-align: right; margin: 0; }
+  .pt-opt .pt-price .input { width: 96px; }
+  .pt-actions { text-align: right; white-space: nowrap; }
+  .pt-add-row td { background: #fbfcff; padding: 12px 16px; }
+  .pt-add-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pt-add-form .input { flex: 1; min-width: 100px; height: 34px; font-size: 13px; }
+  .pt-add-form .select { height: 34px; font-size: 13px; }
   .price-edit-note { font-size: 12px; color: var(--text-3); padding: 10px 20px; border-top: 1px solid #f1f3fa; }
-  .price-cell-model { padding: 14px 16px; }
-  .price-opt-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px dashed #f1f3fa; }
-  .price-opt-row:last-child { border-bottom: none; }
-  .price-opt-name { font-size: 13px; font-weight: 600; min-width: 90px; display: flex; align-items: center; gap: 6px; }
-  .price-opt-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
-  .price-opt-val small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
-  .price-opt-unit { font-size: 11.5px; color: var(--text-3); min-width: 62px; text-align: right; }
-  .price-add-form { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  @media (max-width: 900px) { .price-grid { grid-template-columns: 1fr; } .price-cell { border-right: none; border-bottom: 1px solid #f1f3fa; } }
+  @media (max-width: 900px) { .pt-actions { display: none; } }
 
   /* ===== API 说明模态框 ===== */
   .api-code {
@@ -1386,57 +1397,78 @@ async function loadPrices() {
   try {
     const r = await api('/billing/api/prices');
     state.items = r.items || [];
-    const cells = state.items.map(it => {
+    let rows = '';
+    state.items.forEach(it => {
       const meta = ITEM_META[it.item_key] || { ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
+      const icoCell = '<span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>';
       if (it.item_type === 'model') {
-        const opts = (it.options || []).map(o => {
-          const valCell = priceEditing
-            ? '<input class="input" id="optIn_' + esc(it.item_key) + '_' + esc(o.option_key) + '" type="number" min="0" step="0.01" value="' + o.price_yuan + '" style="width:96px;height:30px;font-size:12.5px;margin:0">'
+        const delItem = priceEditing
+          ? '<button class="btn btn-ghost btn-sm" onclick="deleteItem(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">删除</button>'
+          : '';
+        rows += '<tr class="pt-item pt-model">' +
+          '<td><div class="pt-name">' + icoCell + esc(it.item_name) + '</div></td>' +
+          '<td><span class="tag tag-warning">型号型</span></td>' +
+          '<td class="pt-price muted" style="font-weight:500">按型号</td>' +
+          '<td class="pt-unit">' + esc(it.unit) + '</td>' +
+          '<td class="muted">' + (it.options || []).length + ' 个型号</td>' +
+          '<td class="muted">' + esc(it.updated_by || '') + '</td>' +
+          '<td class="pt-actions">' + delItem + '</td></tr>';
+        (it.options || []).forEach(o => {
+          const priceCell = priceEditing
+            ? '<input class="input" id="optIn_' + esc(it.item_key) + '_' + esc(o.option_key) + '" type="number" min="0" step="0.01" value="' + o.price_yuan + '">'
             : o.price_yuan + '<small>元</small>';
           const del = priceEditing
-            ? '<button class="btn btn-ghost btn-sm" onclick="deleteOption(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\',\'' + esc(o.option_key).replace(/'/g, "\\'") + '\')">✕</button>'
+            ? '<button class="btn btn-ghost btn-sm" onclick="deleteOption(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\',\'' + esc(o.option_key).replace(/'/g, "\\'") + '\')">删除</button>'
             : '';
-          return '<div class="price-opt-row">' +
-            '<div class="price-opt-name">' + esc(o.option_name) + del + '</div>' +
-            '<div class="price-opt-val">' + valCell + '</div>' +
-            '<div class="price-opt-unit">' + esc(it.unit) + '</div></div>';
-        }).join('');
-        const addOpt = priceEditing
-          ? '<div class="price-opt-row" style="background:#fbfcff;border-bottom:none">' +
-              '<input class="input" id="newOpt_' + esc(it.item_key) + '" placeholder="型号如 A10" style="flex:1;height:30px;font-size:12.5px">' +
-              '<input class="input" id="newOptPrice_' + esc(it.item_key) + '" type="number" min="0" step="0.01" placeholder="价格" style="width:80px;height:30px;font-size:12.5px">' +
-            '</div>'
+          rows += '<tr class="pt-opt">' +
+            '<td><div class="pt-opt-name">' + esc(o.option_name) + '</div></td>' +
+            '<td></td>' +
+            '<td class="pt-price">' + priceCell + '</td>' +
+            '<td class="pt-unit">' + esc(it.unit) + '</td>' +
+            '<td class="muted">—</td>' +
+            '<td class="muted">' + esc(o.updated_by || '') + '</td>' +
+            '<td class="pt-actions">' + del + '</td></tr>';
+        });
+        if (priceEditing) {
+          rows += '<tr class="pt-opt" style="background:#fbfcff">' +
+            '<td><div class="pt-opt-name">＋ 型号</div></td><td></td>' +
+            '<td colspan="4"><div style="display:flex;gap:8px">' +
+              '<input class="input" id="newOpt_' + esc(it.item_key) + '" placeholder="型号如 A10" style="width:130px;height:30px;font-size:12.5px">' +
+              '<input class="input" id="newOptPrice_' + esc(it.item_key) + '" type="number" min="0" step="0.01" placeholder="价格(元/月)" style="width:130px;height:30px;font-size:12.5px">' +
+            '</div></td><td class="pt-actions"></td></tr>';
+        }
+      } else {
+        const priceCell = priceEditing
+          ? '<input class="input" id="priceIn_' + esc(it.item_key) + '" type="number" min="0" step="0.01" value="' + it.price_yuan + '">'
+          : it.price_yuan + '<small>元</small>';
+        const del = priceEditing
+          ? '<button class="btn btn-ghost btn-sm" onclick="deleteItem(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">删除</button>'
           : '';
-        return '<div class="price-cell price-cell-model">' +
-          '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + '</div>' +
-          opts + addOpt + '</div>';
+        rows += '<tr class="pt-item">' +
+          '<td><div class="pt-name">' + icoCell + esc(it.item_name) + '</div></td>' +
+          '<td><span class="tag tag-neutral">数量型</span></td>' +
+          '<td class="pt-price">' + priceCell + '</td>' +
+          '<td class="pt-unit">' + esc(it.unit) + '</td>' +
+          '<td class="muted">—</td>' +
+          '<td class="muted">' + esc(it.updated_by || '') + '</td>' +
+          '<td class="pt-actions">' + del + '</td></tr>';
       }
-      const valCell = priceEditing
-        ? '<input class="input" id="priceIn_' + esc(it.item_key) + '" type="number" min="0" step="0.01" value="' + it.price_yuan + '">'
-        : it.price_yuan + '<small>元</small>';
-      const del = priceEditing
-        ? '<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="deleteItem(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">删除</button>'
-        : '';
-      return '<div class="price-cell">' +
-        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + del + '</div>' +
-        '<div class="val">' + valCell + '</div>' +
-        '<div class="meta">' + esc(it.unit) + (it.updated_by ? ' · 修改人 ' + esc(it.updated_by) : '') + '</div></div>';
-    }).join('');
-    const addCell = priceEditing
-      ? '<div class="price-cell" style="background:#fbfcff">' +
-          '<div class="res">＋ 添加计费项（如：存储 / 服务运维）</div>' +
-          '<div class="price-add-form">' +
-            '<input class="input" id="newItemName" placeholder="名称 如 存储" style="flex:1">' +
-            '<select class="select" id="newItemType" style="width:92px;height:36px"><option value="quantity">数量型</option><option value="model">型号型</option></select>' +
-            '<input class="input" id="newItemKey" placeholder="标识 如 storage" style="flex:1">' +
-            '<input class="input" id="newItemUnit" placeholder="单位 如 元/GB/月" style="flex:1">' +
-            '<input class="input" id="newItemPrice" type="number" min="0" step="0.01" placeholder="单价(元/月)" style="width:110px">' +
-            '<button class="btn btn-primary btn-sm" onclick="addNewItem()">添加</button>' +
-          '</div>' +
-        '</div>'
-      : '';
-    $('priceGrid').innerHTML = (cells || '<div class="price-cell"><div class="muted">尚未配置计费项，点击「修改价格」添加</div></div>') + addCell;
-  } catch (e) { $('priceGrid').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>'; }
+    });
+    if (priceEditing) {
+      rows += '<tr class="pt-add-row"><td colspan="7"><div class="pt-add-form">' +
+        '<span class="muted" style="white-space:nowrap">＋ 添加计费项</span>' +
+        '<input class="input" id="newItemName" placeholder="名称 如 存储">' +
+        '<select class="select" id="newItemType"><option value="quantity">数量型</option><option value="model">型号型</option></select>' +
+        '<input class="input" id="newItemKey" placeholder="标识 如 storage">' +
+        '<input class="input" id="newItemUnit" placeholder="单位 如 元/GB/月">' +
+        '<input class="input" id="newItemPrice" type="number" min="0" step="0.01" placeholder="单价(元/月)">' +
+        '<button class="btn btn-primary btn-sm" onclick="addNewItem()">添加</button>' +
+      '</div></td></tr>';
+    }
+    $('priceGrid').innerHTML = rows
+      ? '<table class="price-table"><thead><tr><th>计费项</th><th>类型</th><th style="text-align:right">单价</th><th>单位</th><th>型号</th><th>修改人</th><th class="pt-actions">操作</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      : '<div style="padding:30px;text-align:center;color:var(--text-3)">尚未配置计费项，点击「修改价格」添加</div>';
+  } catch (e) { $('priceGrid').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-3)">计费标准加载失败</div>'; }
 }
 function togglePriceEdit() {
   priceEditing = !priceEditing;
