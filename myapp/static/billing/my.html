@@ -427,9 +427,9 @@ async function loadPrices() {
         '<div class="meta">' + esc(p.unit) + '</div></div>'
     ).join('');
     $('priceRow').innerHTML = (cpuMem || '') + gpuCells ||
-      '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>';
+      '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>';
   } catch (e) {
-    $('priceRow').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>';
+    $('priceRow').innerHTML = '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>';
   }
 }
 

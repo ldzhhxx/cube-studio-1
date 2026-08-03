@@ -1386,8 +1386,8 @@ async function loadPrices() {
           '<div style="display:flex;gap:8px;margin-top:8px"><input class="input" id="gpuNewType" placeholder="型号如 A10" style="flex:1"><input class="input" id="gpuNewPrice" type="number" min="0" step="0.01" placeholder="价格(元/月)" style="flex:1"></div>' +
         '</div>'
       : '';
-    $('priceGrid').innerHTML = (cpuMem || '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>') + gpuCells + addCell;
-  } catch (e) { $('priceGrid').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>'; }
+    $('priceGrid').innerHTML = (cpuMem || '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>') + gpuCells + addCell;
+  } catch (e) { $('priceGrid').innerHTML = '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>'; }
 }
 function togglePriceEdit() {
   priceEditing = !priceEditing;
