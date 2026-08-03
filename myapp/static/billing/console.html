@@ -1490,13 +1490,12 @@ async function loadPrices() {
         });
         if (priceEditing) {
           rows += '<tr class="pt-opt" style="background:#fbfcff">' +
-            '<td><div class="pt-opt-name">＋ 批量型号</div></td><td></td>' +
-            '<td colspan="4"><div style="display:flex;gap:8px;align-items:flex-start">' +
-              '<textarea class="input" id="newOpt_' + esc(it.item_key) + '" rows="4" placeholder="每行一个型号，格式：型号 价格' + String.fromCharCode(10) +
-              '如：A40 3000' + String.fromCharCode(10) + 'L20 7000（按' + esc(it.unit || '元/单位/月') + '）" ' +
-              'style="flex:1;height:auto;min-height:92px;resize:vertical;font-size:12.5px;line-height:1.7;font-family:inherit"></textarea>' +
-              '<button class="btn btn-primary btn-sm" onclick="addBatchOptions(\'' + esc(it.item_key).replace(/'/g, "\\\\'") + '\')" style="margin-top:2px">添加</button>' +
-            '</div></td><td class="pt-actions"></td></tr>';
+            '<td><div class="pt-opt-name">＋ 新增型号</div></td><td></td>' +
+            '<td colspan="4"><div id="pend_' + esc(it.item_key) + '"></div>' +
+              '<div style="display:flex;gap:8px;margin-top:6px">' +
+                '<button class="btn btn-ghost btn-sm" onclick="addOptionRow(\'' + esc(it.item_key).replace(/'/g, "\\\\'") + '\')">＋ 继续添加型号</button>' +
+                '<button class="btn btn-primary btn-sm" onclick="submitOptions(\'' + esc(it.item_key).replace(/'/g, "\\\\'") + '\')">添加全部</button>' +
+              '</div></td><td class="pt-actions"></td></tr>';
         }
       } else {
         const priceCell = priceEditing
@@ -1529,6 +1528,10 @@ async function loadPrices() {
     $('priceGrid').innerHTML = rows
       ? '<table class="price-table"><thead><tr><th>计费项</th><th>类型</th><th style="text-align:right">单价</th><th>单位</th><th>型号</th><th>修改人</th><th class="pt-actions">操作</th></tr></thead><tbody>' + rows + '</tbody></table>'
       : '<div style="padding:30px;text-align:center;color:var(--text-3)">尚未配置计费项，点击「修改价格」添加</div>';
+    // 编辑模式下每个型号型计费项预置一行待填型号
+    if (priceEditing) {
+      state.items.filter(it => it.item_type === 'model').forEach(it => addOptionRow(it.item_key, true));
+    }
   } catch (e) { $('priceGrid').innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-3)">计费标准加载失败</div>'; }
 }
 function togglePriceEdit() {
@@ -1562,30 +1565,42 @@ function deleteItem(itemKey) {
     } catch (e) { toast('删除失败：' + e.message, 'error'); }
   });
 }
-// 批量添加型号：每行一个"型号 价格"（空格/逗号/Tab 分隔），一次可加多个
-async function addBatchOptions(itemKey) {
-  const ta = $('newOpt_' + itemKey);
-  if (!ta) return;
-  const lines = (ta.value || '').split('\n').map(l => l.trim()).filter(Boolean);
-  if (!lines.length) return toast('请粘贴型号清单（每行：型号 价格）', 'error');
+// 型号逐行添加：每行（型号 + 价格 + ✕），"＋ 继续添加型号"加行，全部填好点"添加全部"提交
+let optRowSeq = 0;
+function addOptionRow(itemKey, auto) {
+  optRowSeq++;
+  const n = optRowSeq;
+  const row = document.createElement('div');
+  row.className = 'opt-pend-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center';
+  row.innerHTML =
+    '<input class="input" id="popK_' + n + '" placeholder="型号 如 L20" style="flex:1;height:32px;font-size:13px">' +
+    '<input class="input" id="popP_' + n + '" type="number" min="0" step="0.01" placeholder="价格(元/月)" style="width:130px;height:32px;font-size:13px;text-align:right">' +
+    '<button class="btn btn-ghost btn-sm" style="width:26px;height:26px;padding:0" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
+  $('pend_' + itemKey).appendChild(row);
+  if (!auto) $('popK_' + n).focus();
+}
+async function submitOptions(itemKey) {
+  const rows = document.querySelectorAll('#pend_' + itemKey + ' .opt-pend-row');
   const parsed = [];
-  for (const line of lines) {
-    const parts = line.split(/[\s,，\t]+/).filter(Boolean);
-    if (parts.length < 2) return toast('第 ' + (lines.indexOf(line) + 1) + ' 行格式不对：' + line, 'error');
-    const price = parseFloat(parts[parts.length - 1]);
-    if (!price || price <= 0) return toast('第 ' + (lines.indexOf(line) + 1) + ' 行价格无效：' + line, 'error');
-    parsed.push({ option_key: parts.slice(0, -1).join('_'), price_fen: Math.round(price * 100) });
-  }
+  rows.forEach((r, i) => {
+    const k = r.querySelector('input[id^="popK_"]').value.trim();
+    const p = parseFloat(r.querySelector('input[id^="popP_"]').value);
+    if (!k && !p) return;  // 空行跳过
+    if (!k) return toast('第 ' + (i + 1) + ' 行：请填写型号名', 'error');
+    if (!p || p <= 0) return toast('第 ' + (i + 1) + ' 行（' + k + '）：价格无效', 'error');
+    parsed.push({ option_key: k, price_fen: Math.round(p * 100) });
+  });
+  if (!parsed.length) return toast('请至少填写一行型号', 'error');
   let ok = 0, fail = 0;
-  for (const p of parsed) {
+  for (const item of parsed) {
     try {
       await api('/billing/api/admin/items/options', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_key: itemKey, option_key: p.option_key, price_fen: p.price_fen }) });
+        body: JSON.stringify({ item_key: itemKey, option_key: item.option_key, price_fen: item.price_fen }) });
       ok++;
     } catch (e) { fail++; }
   }
   toast('型号添加完成：成功 ' + ok + ' 个' + (fail ? '，失败 ' + fail + ' 个' : ''), fail ? 'error' : 'success');
-  ta.value = '';
   loadPrices();
 }
 
