@@ -64,7 +64,14 @@ myapp/migrations/versions/8d3e2f1a6c9b_add_account_log_reverse.py
    ```python
    static_urls=['/static','/logout','/login','/health','/wechat','/billing/api']
    ```
-3. `myapp/views/home.py` —— 菜单函数里加"计费中心"顶级菜单（所有登录用户可见，管理员多一个"计费控制台"子项）。改动点在 `@expose('/menu')` 函数内，`menu.insert(0, billing)` 放在 `return jsonify(menu)` 之前。
+3. `myapp/views/home.py` —— **只需加 2 行**，不依赖你 home.py 里的任何现有变量（setting/links 等一律不用管，你的改动原样保留）：
+   ```python
+   # 在 @expose('/menu') 函数的 return jsonify(menu) 之前插入：
+   # 计费中心：所有登录用户可见；普通用户只有"我的账单"，管理员另有"计费控制台"
+   from myapp.views.view_billing import billing_menu_items
+   menu.insert(0, billing_menu_items())
+   ```
+   > 计费菜单已封装为自包含函数 `billing_menu_items()`（在 view_billing.py 内），按登录用户角色自动返回子项（管理员：计费控制台+我的账单；普通用户：我的账单）。
 4. `myapp/views/view_pipeline.py` —— `run_pipeline` 函数开头加余额拦截（约 10 行）：
    ```python
    # 计费余额拦截

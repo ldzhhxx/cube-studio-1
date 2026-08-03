@@ -642,35 +642,15 @@ class Myapp(BaseMyappView):
                 ]
             }
 
-        # 计费中心：所有登录用户可见；普通用户只有"我的账单"，管理员另有"计费控制台"
-        billing = {
-                "name": 'billing',
-                "title": '计费中心',
-                "isMenu": True,
-                "isExpand": True,
-                "icon": '<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="128" height="128"><path d="M912 320h-144v-48c0-84.8-67.2-152-152-152h-208C323.2 120 256 187.2 256 272v48H112c-17.6 0-32 14.4-32 32v448c0 88 72 160 160 160h544c88 0 160-72 160-160V352c0-17.6-14.4-32-32-32zM320 272c0-48 32-80 80-80h208c48 0 80 32 80 80v48H320v-48z m592 448c0 56-40 96-96 96H272c-56 0-96-40-96-96V384h736v336z m-368-80c-48 0-88-40-88-88s40-88 88-88 88 40 88 88-40 88-88 88z" p-id="billing"></path></svg>',
-                "children": [
-                    {
-                        "name": 'billing-my',
-                        "title": '我的账单',
-                        "menu_type": "iframe",
-                        "url": '/billing/my',
-                    },
-                ]
-            }
-        if g.user.username in conf.get('ADMIN_USER', '').split(','):
-            billing['children'].insert(0, {
-                "name": 'billing-console',
-                "title": '计费控制台',
-                "menu_type": "iframe",
-                "url": '/billing/console',
-            })
             print(request.host_url)
 
             menu[0]['children'].append(setting)
             menu[0]['children'].append(links)
-        # 计费中心作为顶级菜单，放在所有菜单最前面
-        menu.insert(0, billing)
+
+        # 计费中心：所有登录用户可见；普通用户只有"我的账单"，管理员另有"计费控制台"
+        # （自包含函数，不依赖本函数内其他变量）
+        from myapp.views.view_billing import billing_menu_items
+        menu.insert(0, billing_menu_items())
 
             # menu = menu+setting
 

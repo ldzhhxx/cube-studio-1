@@ -78,6 +78,38 @@ def parse_time(value):
             return None
 
 
+def billing_menu_items():
+    """计费中心顶级菜单（自包含，不依赖 home.py 的任何变量）。
+    供 home.py 融合：只需在 return jsonify(menu) 前调用 menu.insert(0, billing_menu_items())。"""
+    billing = {
+        "name": 'billing',
+        "title": '计费中心',
+        "isMenu": True,
+        "isExpand": True,
+        "icon": '<svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="128" height="128"><path d="M912 320h-144v-48c0-84.8-67.2-152-152-152h-208C323.2 120 256 187.2 256 272v48H112c-17.6 0-32 14.4-32 32v448c0 88 72 160 160 160h544c88 0 160-72 160-160V352c0-17.6-14.4-32-32-32zM320 272c0-48 32-80 80-80h208c48 0 80 32 80 80v48H320v-48z m592 448c0 56-40 96-96 96H272c-56 0-96-40-96-96V384h736v336z m-368-80c-48 0-88-40-88-88s40-88 88-88 88 40 88 88-40 88-88 88z" p-id="billing"></path></svg>',
+        "children": [
+            {
+                "name": 'billing-my',
+                "title": '我的账单',
+                "menu_type": "iframe",
+                "url": '/billing/my',
+            },
+        ],
+    }
+    try:
+        # 管理员另有"计费控制台"子项
+        if g.user and g.user.is_authenticated and g.user.username in conf.get('ADMIN_USER', '').split(','):
+            billing['children'].insert(0, {
+                "name": 'billing-console',
+                "title": '计费控制台',
+                "menu_type": "iframe",
+                "url": '/billing/console',
+            })
+    except Exception as e:
+        logging.warning('billing menu admin check error: %s' % e)
+    return billing
+
+
 def err_response(msg, status=400):
     return jsonify({'message': msg, 'result': None, 'status': status}), status
 
