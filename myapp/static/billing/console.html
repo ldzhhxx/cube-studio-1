@@ -1293,7 +1293,7 @@ function renderDeductHead() {
     const unitShort = String(it.unit || '').replace('元/', '').replace('/月', '');
     if (it.item_type === 'model') {
       const uq = unitQuantity(it.unit);
-      h += '<div class="dt-col">' + esc(it.item_name) + '<br><span class="muted" style="font-size:11px">型号 / ' + (uq ? esc(uq) : '数量') + '</span></div>';
+      h += '<div class="dt-col">' + esc(it.item_name) + '<br><span class="muted" style="font-size:11px">各型号按 ' + (uq ? esc(uq) : '数量') + ' 填</span></div>';
     } else {
       h += '<div class="dt-col">' + esc(it.item_name) + (unitShort ? '<br><span class="muted" style="font-size:11px">' + esc(unitShort) + '</span>' : '') + '</div>';
     }
@@ -1318,13 +1318,14 @@ function addDeductRow() {
   // 计费项列（按配置动态）
   (state.items || []).forEach(it => {
     if (it.item_type === 'model') {
-      const opts = ['<option value="">型号</option>']
-        .concat((it.options || []).map(o => '<option value="' + esc(o.option_key) + '">' + esc(o.option_name) + '</option>')).join('');
+      // 型号分组：每个子型号一个数量输入框（可同时用多个型号）
       const uq = unitQuantity(it.unit);
-      html += '<div class="dt-model-cell">' +
-        '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
-        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '数量') + '" title="数量（' + (uq ? esc(uq) : '单位') + '）" oninput="calcDeductRow(' + n + ')">' +
-      '</div>';
+      const childInputs = (it.children || []).map(c =>
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">' +
+          '<span style="font-size:12px;color:var(--text-2);min-width:52px;white-space:nowrap">' + esc(c.item_name) + '</span>' +
+          '<input class="input" id="dtQ' + n + '_' + esc(c.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '0') + '" title="' + esc(c.item_name) + ' 数量（' + (uq ? esc(uq) : '') + '），单价 ' + c.price_yuan + ' 元' + (uq ? '/' + esc(uq) : '') + '/月" oninput="calcDeductRow(' + n + ')">' +
+        '</div>').join('');
+      html += '<div>' + (childInputs || '<span class="muted" style="font-size:12px">暂无型号，请先在计费标准中添加</span>') + '</div>';
     } else {
       html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="0" oninput="calcDeductRow(' + n + ')">';
     }
@@ -1342,18 +1343,20 @@ function addDeductRow() {
 function collectRowResources(n) {
   const res = [];
   (state.items || []).forEach(it => {
+    if (it.item_type === 'model') {
+      // 型号分组：每个子型号数量>0 则计入（可同时用多个型号）
+      (it.children || []).forEach(c => {
+        const qEl = $('dtQ' + n + '_' + c.item_key);
+        if (!qEl) return;
+        const q = parseFloat(qEl.value) || 0;
+        if (q > 0) res.push({ item_key: c.item_key, quantity: q });
+      });
+      return;
+    }
     const qEl = $('dtQ' + n + '_' + it.item_key);
     if (!qEl) return;
     const q = parseFloat(qEl.value) || 0;
-    if (q <= 0) return;
-    if (it.item_type === 'model') {
-      const oEl = $('dtO' + n + '_' + it.item_key);
-      const opt = oEl ? oEl.value : '';
-      if (!opt) return;
-      res.push({ item_key: it.item_key, option_key: opt, quantity: q });
-    } else {
-      res.push({ item_key: it.item_key, quantity: q });
-    }
+    if (q > 0) res.push({ item_key: it.item_key, quantity: q });
   });
   return res;
 }
@@ -1461,31 +1464,33 @@ async function loadPrices() {
       const meta = ITEM_META[it.item_key] || { ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
       const icoCell = '<span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>';
       if (it.item_type === 'model') {
+        // 分组行（型号型 = 容器）
         const delItem = priceEditing
-          ? '<button class="btn btn-ghost btn-sm" onclick="deleteItem(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">删除</button>'
+          ? '<button class="btn btn-ghost btn-sm" onclick="deleteItem(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">删除分组</button>'
           : '';
         rows += '<tr class="pt-item pt-model">' +
           '<td><div class="pt-name">' + icoCell + esc(it.item_name) + '</div></td>' +
-          '<td><span class="tag tag-warning">型号型</span></td>' +
-          '<td class="pt-price muted" style="font-weight:500">按型号</td>' +
+          '<td><span class="tag tag-warning">型号分组</span></td>' +
+          '<td class="pt-price muted" style="font-weight:500">—</td>' +
           '<td class="pt-unit">' + esc(it.unit) + '</td>' +
-          '<td class="muted">' + (it.options || []).length + ' 个型号</td>' +
+          '<td class="muted">' + (it.children || []).length + ' 个型号</td>' +
           '<td class="muted">' + esc(it.updated_by || '') + '</td>' +
           '<td class="pt-actions">' + delItem + '</td></tr>';
-        (it.options || []).forEach(o => {
+        // 子型号行：每个子型号都是完整数量型计费项
+        (it.children || []).forEach(c => {
           const priceCell = priceEditing
-            ? '<input class="input" id="optIn_' + esc(it.item_key) + '_' + esc(o.option_key) + '" type="number" min="0" step="0.01" value="' + o.price_yuan + '">'
-            : o.price_yuan + '<small>元</small>';
+            ? '<input class="input" id="priceIn_' + esc(c.item_key) + '" type="number" min="0" step="0.01" value="' + c.price_yuan + '">'
+            : c.price_yuan + '<small>元</small>';
           const del = priceEditing
-            ? '<button class="btn btn-ghost btn-sm" onclick="deleteOption(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\',\'' + esc(o.option_key).replace(/'/g, "\\'") + '\')">删除</button>'
+            ? '<button class="btn btn-ghost btn-sm" onclick="deleteItem(\'' + esc(c.item_key).replace(/'/g, "\\'") + '\')">删除</button>'
             : '';
           rows += '<tr class="pt-opt">' +
-            '<td><div class="pt-opt-name">' + esc(o.option_name) + '</div></td>' +
-            '<td></td>' +
+            '<td><div class="pt-opt-name">' + esc(c.item_name) + '</div></td>' +
+            '<td><span class="tag tag-neutral">数量型</span></td>' +
             '<td class="pt-price">' + priceCell + '</td>' +
-            '<td class="pt-unit">' + esc(it.unit) + '</td>' +
+            '<td class="pt-unit">' + esc(c.unit || it.unit) + '</td>' +
             '<td class="muted">—</td>' +
-            '<td class="muted">' + esc(o.updated_by || '') + '</td>' +
+            '<td class="muted">' + esc(c.updated_by || '') + '</td>' +
             '<td class="pt-actions">' + del + '</td></tr>';
         });
         if (priceEditing) {
@@ -1493,8 +1498,8 @@ async function loadPrices() {
             '<td><div class="pt-opt-name">＋ 新增型号</div></td><td></td>' +
             '<td colspan="4"><div id="pend_' + esc(it.item_key) + '"></div>' +
               '<div style="display:flex;gap:8px;margin-top:6px">' +
-                '<button class="btn btn-ghost btn-sm" onclick="addOptionRow(\'' + esc(it.item_key).replace(/'/g, "\\\\'") + '\')">＋ 继续添加型号</button>' +
-                '<button class="btn btn-primary btn-sm" onclick="submitOptions(\'' + esc(it.item_key).replace(/'/g, "\\\\'") + '\')">添加全部</button>' +
+                '<button class="btn btn-ghost btn-sm" onclick="addOptionRow(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">＋ 继续添加型号</button>' +
+                '<button class="btn btn-primary btn-sm" onclick="submitOptions(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">添加全部</button>' +
               '</div></td><td class="pt-actions"></td></tr>';
         }
       } else {
@@ -1624,14 +1629,14 @@ async function savePrices() {
       await api('/billing/api/admin/items/price', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_key: it.item_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
     }
-    // 型号细项改价（新增型号走「＋ 批量型号」按钮）
+    // 子型号（数量型）改价
     for (const it of state.items) {
       if (it.item_type !== 'model') continue;
-      for (const o of it.options || []) {
-        const el = $('optIn_' + it.item_key + '_' + o.option_key);
+      for (const c of it.children || []) {
+        const el = $('priceIn_' + c.item_key);
         if (!el) continue;
         await api('/billing/api/admin/items/price', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item_key: it.item_key, option_key: o.option_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
+          body: JSON.stringify({ item_key: c.item_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
       }
     }
     priceEditing = false;

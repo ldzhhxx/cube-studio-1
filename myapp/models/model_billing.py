@@ -72,7 +72,8 @@ class PriceConfig(Model, MyappModelBase):
     id = Column(Integer, primary_key=True)
     item_key = Column(String(50), nullable=False, unique=True)   # 计费项标识：cpu / memory / gpu / storage ...
     item_name = Column(String(100), default='')                  # 显示名：CPU / 内存 / GPU / 存储
-    item_type = Column(String(20), default='quantity')           # quantity 数量型 / model 型号型
+    item_type = Column(String(20), default='quantity')           # quantity 数量型 / model 型号型（分组，子型号为独立数量型计费项）
+    parent_key = Column(String(50), default=None)                # 父计费项标识（型号型分组下的子型号），NULL=顶级
     price_fen = Column(Integer, default=0)                       # 数量型：单价（分/单位/月）
     unit = Column(String(50), default='')                        # 单位描述，如 元/核/月
     sort_order = Column(Integer, default=0)                      # 展示顺序

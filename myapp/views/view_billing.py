@@ -608,11 +608,13 @@ def billing_my_logs():
 # 后期新增计费项（存储/服务运维等）前端添加配置即可，无需改代码
 # ============================================================
 def _item_dict(p):
-    options = db.session.query(ItemPriceDetail).filter_by(item_id=p.id).order_by(ItemPriceDetail.price_fen.desc()).all()
+    # 型号型（分组）：children = 挂在该项下的子型号（独立数量型计费项）
+    children = db.session.query(PriceConfig).filter_by(parent_key=p.item_key).order_by(PriceConfig.id.asc()).all()
     return {
         'item_key': p.item_key,
         'item_name': p.item_name or p.item_key,
         'item_type': p.item_type or 'quantity',
+        'parent_key': p.parent_key or '',
         'price_fen': p.price_fen or 0,
         'price_yuan': round((p.price_fen or 0) / 100.0, 4),
         'unit': p.unit or '',
@@ -620,18 +622,12 @@ def _item_dict(p):
         'enabled': p.enabled if p.enabled is not None else 1,
         'updated_by': p.updated_by or '',
         'updated_on': p.updated_on.strftime('%Y-%m-%d %H:%M:%S') if p.updated_on else '',
-        'options': [{
-            'option_key': d.option_key,
-            'option_name': d.option_name or d.option_key,
-            'price_fen': d.price_fen or 0,
-            'price_yuan': round((d.price_fen or 0) / 100.0, 4),
-            'updated_by': d.updated_by or '',
-        } for d in options],
+        'children': [_item_dict(c) for c in children],
     }
 
 
 def _all_prices():
-    items = db.session.query(PriceConfig).order_by(PriceConfig.sort_order.asc(), PriceConfig.id.asc()).all()
+    items = db.session.query(PriceConfig).filter(PriceConfig.parent_key.is_(None)).order_by(PriceConfig.sort_order.asc(), PriceConfig.id.asc()).all()
     return {'items': [_item_dict(p) for p in items]}
 
 
@@ -655,7 +651,8 @@ def billing_admin_items():
         p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
         if not p:
             return err_response('item %s not found' % item_key)
-        db.session.query(ItemPriceDetail).filter_by(item_id=p.id).delete()
+        # 级联删除子型号
+        db.session.query(PriceConfig).filter_by(parent_key=item_key).delete()
         db.session.delete(p)
         db.session.commit()
         return ok_response({'deleted': item_key, **_all_prices()})
@@ -666,12 +663,20 @@ def billing_admin_items():
     if db.session.query(PriceConfig).filter_by(item_key=item_key).first():
         return err_response('item %s already exists' % item_key)
     item_type = str(data.get('item_type', 'quantity') or 'quantity').strip()
-    if item_type not in ('quantity', 'model'):
+    parent_key = str(data.get('parent_key', '') or '').strip() or None
+    if parent_key:
+        # 子型号：挂在型号型分组下，强制数量型，单位继承父项
+        parent = db.session.query(PriceConfig).filter_by(item_key=parent_key).first()
+        if not parent:
+            return err_response('parent %s not found' % parent_key)
+        item_type = 'quantity'
+    elif item_type not in ('quantity', 'model'):
         return err_response('item_type must be quantity or model')
     p = PriceConfig(
         item_key=item_key,
         item_name=str(data.get('item_name', '') or item_key)[:100],
         item_type=item_type,
+        parent_key=parent_key,
         price_fen=safe_int(data.get('price_fen')),
         unit=str(data.get('unit', '') or '')[:50],
         sort_order=safe_int(data.get('sort_order')),
@@ -699,7 +704,9 @@ def billing_admin_item_price():
         return err_response('item %s not found' % item_key)
     option_key = str(data.get('option_key', '') or '').strip()
     if option_key:
-        d = db.session.query(ItemPriceDetail).filter_by(item_id=p.id, option_key=option_key).first()
+        # 旧格式兼容：父项+型号 → 子型号计费项
+        d = db.session.query(PriceConfig).filter_by(parent_key=item_key, item_name=option_key).first() \
+            or db.session.query(PriceConfig).filter_by(parent_key=item_key, item_key=option_key).first()
         if not d:
             return err_response('option %s not found for %s' % (option_key, item_key))
         d.price_fen = price_fen
@@ -713,7 +720,9 @@ def billing_admin_item_price():
 
 @app.route('/billing/api/admin/items/options', methods=['POST', 'DELETE'])
 def billing_admin_item_options():
-    """型号细项管理：POST 添加 {item_key, option_key, option_name, price_fen}；DELETE ?item_key=&option_key= 删除"""
+    """兼容旧接口：型号细项 → 现在实现为父子计费项（子型号是独立数量型计费项）
+    POST {item_key(父分组), option_key(型号名), price_fen} 创建/更新子项；
+    DELETE ?item_key=&option_key= 删除子项"""
     if not check_admin_or_token():
         return err_response('no permission', 401)
     if not require_json_content():
@@ -721,11 +730,10 @@ def billing_admin_item_options():
     if request.method == 'DELETE':
         item_key = (request.args.get('item_key', '') or '').strip()
         option_key = (request.args.get('option_key', '') or '').strip()
-        p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
-        d = db.session.query(ItemPriceDetail).filter_by(item_id=p.id, option_key=option_key).first() if p else None
-        if not d:
-            return err_response('option not found')
-        db.session.delete(d)
+        child = db.session.query(PriceConfig).filter_by(parent_key=item_key, item_name=option_key).first()
+        if not child:
+            return err_response('option %s not found under %s' % (option_key, item_key))
+        db.session.delete(child)
         db.session.commit()
         return ok_response({'deleted': option_key, **_all_prices()})
     data = request.get_json(force=True, silent=True) or {}
@@ -736,16 +744,19 @@ def billing_admin_item_options():
         return err_response('item_key and option_key required')
     if price_fen < 0 or price_fen > MAX_TRANSFER_FEN:
         return err_response('price invalid (0~%s)' % MAX_TRANSFER_FEN)
-    p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
-    if not p:
+    parent = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
+    if not parent:
         return err_response('item %s not found' % item_key)
-    d = db.session.query(ItemPriceDetail).filter_by(item_id=p.id, option_key=option_key).first()
-    if not d:
-        d = ItemPriceDetail(item_id=p.id, option_key=option_key)
-        db.session.add(d)
-    d.option_name = str(data.get('option_name', '') or option_key)[:100]
-    d.price_fen = price_fen
-    d.updated_by = current_operator()
+    child_key = '%s_%s' % (item_key, option_key.lower())
+    child = db.session.query(PriceConfig).filter_by(item_key=child_key).first() \
+        or db.session.query(PriceConfig).filter_by(parent_key=item_key, item_name=option_key).first()
+    if not child:
+        child = PriceConfig(item_key=child_key, item_name=option_key, item_type='quantity',
+                            parent_key=item_key, unit=parent.unit, sort_order=100)
+        db.session.add(child)
+    child.item_name = str(data.get('option_name', '') or option_key)[:100]
+    child.price_fen = price_fen
+    child.updated_by = current_operator()
     db.session.commit()
     return ok_response({'item_key': item_key, 'option_key': option_key, 'price_fen': price_fen, **_all_prices()})
 
@@ -755,11 +766,9 @@ def billing_admin_item_options():
 # ============================================================
 def calc_resources(resources, duration_seconds):
     """resources: [{'item_key','option_key','quantity'}] → (明细列表, 总金额分)
-    按月计费：金额 = Σ(数量 × 单价(分/单位/月)) × 时长秒 / (720*3600)"""
+    按月计费：金额 = Σ(数量 × 单价(分/单位/月)) × 时长秒 / (720*3600)
+    子型号为独立数量型计费项（item_key 如 gpu_l20）；兼容旧格式：父项+option_key 自动映射到子型号"""
     items = {p.item_key: p for p in db.session.query(PriceConfig).filter(PriceConfig.enabled == 1).all()}
-    details = {}
-    for d in db.session.query(ItemPriceDetail).all():
-        details.setdefault(d.item_id, {})[d.option_key] = d
     duration_month = safe_int(duration_seconds) / 720.0 / 3600.0
     result, total = [], 0
     for r in resources or []:
@@ -770,13 +779,16 @@ def calc_resources(resources, duration_seconds):
         if quantity <= 0:
             continue
         opt = str(r.get('option_key', '') or '').strip()
+        # 型号型分组：必须落到具体子型号（旧格式 option_key 兼容映射）
         if item.item_type == 'model':
-            detail = details.get(item.id, {}).get(opt)
-            if not detail:
-                raise ValueError('计费项 %s 的型号 %s 未配置价格' % (item.item_key, opt))
-            unit_fen = detail.price_fen or 0
-        else:
-            unit_fen = item.price_fen or 0
+            if not opt:
+                raise ValueError('计费项 %s 为型号分组，请选择具体型号' % item.item_key)
+            child = db.session.query(PriceConfig).filter_by(parent_key=item.item_key, item_name=opt).first() \
+                or db.session.query(PriceConfig).filter_by(parent_key=item.item_key, item_key=opt).first()
+            if not child:
+                raise ValueError('计费项 %s 下不存在型号 %s' % (item.item_key, opt))
+            item = child
+        unit_fen = item.price_fen or 0
         amount = int(round(quantity * unit_fen * duration_month))
         total += amount
         result.append({

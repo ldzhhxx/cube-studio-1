@@ -3,7 +3,7 @@
 -- 生成时间：2026-08-03
 --
 -- 执行说明：
---   1. 计费表（bill / wallet / account_log / price_config / item_price_detail / bill_item）会【先删除再重建】，幂等可重复执行
+--   1. 计费表（bill / wallet / account_log / price_config / bill_item）会【先删除再重建】，幂等可重复执行
 --   2. 本脚本【不包含任何数据】：价格、GPU 型号、用户数据请在前端页面自行添加
 --      （控制台「计费标准」面板可添加 CPU/内存价格与 GPU 型号；用户由平台注册）
 --   3. account_log 含冲正字段（reversed / ref_log_id）
@@ -19,7 +19,8 @@ CREATE TABLE `price_config` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `item_key` varchar(50) NOT NULL,           -- 计费项标识：cpu / memory / gpu / storage ...
   `item_name` varchar(100) DEFAULT NULL,     -- 显示名：CPU / 内存 / GPU / 存储
-  `item_type` varchar(20) DEFAULT 'quantity',-- quantity 数量型 / model 型号型
+  `item_type` varchar(20) DEFAULT 'quantity',-- quantity 数量型 / model 型号型（分组）
+  `parent_key` varchar(50) DEFAULT NULL,     -- 父计费项标识（型号分组下的子型号）
   `price_fen` int(11) DEFAULT NULL,          -- 数量型单价（分/单位/月）
   `unit` varchar(50) DEFAULT NULL,           -- 如 元/核/月
   `sort_order` int(11) DEFAULT NULL,
@@ -30,18 +31,6 @@ CREATE TABLE `price_config` (
   UNIQUE KEY `uq_price_resource` (`item_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `item_price_detail` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `item_id` int(11) NOT NULL,                -- FK price_config.id（型号型计费项）
-  `option_key` varchar(50) NOT NULL,         -- 型号：A40 / L20
-  `option_name` varchar(100) DEFAULT NULL,
-  `price_fen` int(11) DEFAULT NULL,          -- 该型号单价（分/单位/月）
-  `updated_by` varchar(100) DEFAULT NULL,
-  `updated_on` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_item_option` (`item_id`, `option_key`),
-  CONSTRAINT `fk_detail_item` FOREIGN KEY (`item_id`) REFERENCES `price_config` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 

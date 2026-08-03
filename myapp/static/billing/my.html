@@ -423,17 +423,19 @@ async function loadPrices() {
       const meta = ITEM_META[it.item_key] || { ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
       const icoCell = '<span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>';
       if (it.item_type === 'model') {
+        // 分组行 + 子型号数量型行
         rows += '<tr class="pt-item pt-model">' +
           '<td><div class="pt-name">' + icoCell + esc(it.item_name) + '</div></td>' +
-          '<td><span class="tag tag-warning">型号型</span></td>' +
-          '<td class="pt-price muted" style="font-weight:500">按型号</td>' +
+          '<td><span class="tag tag-warning">型号分组</span></td>' +
+          '<td class="pt-price muted" style="font-weight:500">—</td>' +
           '<td class="pt-unit">' + esc(it.unit) + '</td>' +
-          '<td class="muted">' + (it.options || []).length + ' 个型号</td></tr>';
-        (it.options || []).forEach(o => {
+          '<td class="muted">' + (it.children || []).length + ' 个型号</td></tr>';
+        (it.children || []).forEach(c => {
           rows += '<tr class="pt-opt">' +
-            '<td><div class="pt-opt-name">' + esc(o.option_name) + '</div></td><td></td>' +
-            '<td class="pt-price">' + o.price_yuan + '<small>元</small></td>' +
-            '<td class="pt-unit">' + esc(it.unit) + '</td><td class="muted">—</td></tr>';
+            '<td><div class="pt-opt-name">' + esc(c.item_name) + '</div></td>' +
+            '<td><span class="tag tag-neutral">数量型</span></td>' +
+            '<td class="pt-price">' + c.price_yuan + '<small>元</small></td>' +
+            '<td class="pt-unit">' + esc(c.unit || it.unit) + '</td><td class="muted">—</td></tr>';
         });
       } else {
         rows += '<tr class="pt-item">' +
