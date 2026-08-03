@@ -451,9 +451,9 @@
   <div class="price-panel">
     <div class="price-head">
       <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-tag"/></svg> 计费标准</b>
+      <button class="btn btn-ghost btn-sm" id="priceToggleBtn" onclick="togglePricePanel()" title="收起/展开计费标准">收起 ▾</button>
       <span class="muted" id="priceMeta">资源月单价 · 按使用时长折算（每月 720 小时）</span>
       <span class="actions" id="priceActions">
-        <button class="btn btn-ghost btn-sm" id="priceToggleBtn" onclick="togglePricePanel()" title="收起/展开计费标准">收起 ▾</button>
         <button class="btn btn-ghost btn-sm" id="priceEditBtn" onclick="togglePriceEdit()">修改价格</button>
         <button class="btn btn-primary btn-sm" id="priceSaveBtn" style="display:none" onclick="savePrices()">保存</button>
         <button class="btn btn-ghost btn-sm" id="priceCancelBtn" style="display:none" onclick="togglePriceEdit()">取消</button>
