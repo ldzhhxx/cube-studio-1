@@ -263,15 +263,18 @@
   </div>
 </div>
 
-<!-- 计费标准（普通用户可见，样式与计费控制台一致） -->
+<!-- 计费标准（普通用户可见，样式与计费控制台一致，可收起） -->
 <div class="section">
   <div class="price-panel">
     <div class="price-head">
       <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-tag"/></svg> 计费标准</b>
+      <button class="btn btn-ghost btn-sm" id="priceToggleBtn" onclick="togglePricePanel()" title="收起/展开计费标准">展开 ▴</button>
       <span class="muted">资源月单价 · 按使用时长折算（每月 720 小时）</span>
     </div>
-    <div class="price-grid" id="priceRow"></div>
-    <div class="price-edit-note">任务费用 =（CPU核数 × CPU月单价 + 内存GB × 内存月单价 + GPU卡数 × 型号月单价）× 使用时长 ÷ 720 小时</div>
+    <div id="priceBodyWrap" style="display:none">
+      <div class="price-grid" id="priceRow"></div>
+      <div class="price-edit-note">任务费用 =（CPU核数 × CPU月单价 + 内存GB × 内存月单价 + GPU卡数 × 型号月单价）× 使用时长 ÷ 720 小时</div>
+    </div>
   </div>
 </div>
 
@@ -412,6 +415,15 @@ async function loadLogs(page) {
     $('lInfo').textContent = '共 ' + r.count + ' 条 · 第 ' + r.page + '/' + Math.max(Math.ceil(r.count / PAGE_SIZE), 1) + ' 页';
     $('lPages').innerHTML = pagination(p, r.count, 'loadLogs');
   } catch (e) { toast('流水加载失败：' + e.message, 'error'); }
+}
+
+// 计费标准面板收起/展开
+function togglePricePanel() {
+  const wrap = $('priceBodyWrap');
+  const btn = $('priceToggleBtn');
+  const collapsed = wrap.style.display === 'none';
+  wrap.style.display = collapsed ? '' : 'none';
+  btn.textContent = collapsed ? '收起 ▾' : '展开 ▴';
 }
 
 function switchTab(tab) {
