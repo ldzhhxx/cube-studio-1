@@ -453,13 +453,16 @@
       <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-tag"/></svg> 计费标准</b>
       <span class="muted" id="priceMeta">资源月单价 · 按使用时长折算（每月 720 小时）</span>
       <span class="actions" id="priceActions">
+        <button class="btn btn-ghost btn-sm" id="priceToggleBtn" onclick="togglePricePanel()" title="收起/展开计费标准">收起 ▾</button>
         <button class="btn btn-ghost btn-sm" id="priceEditBtn" onclick="togglePriceEdit()">修改价格</button>
         <button class="btn btn-primary btn-sm" id="priceSaveBtn" style="display:none" onclick="savePrices()">保存</button>
         <button class="btn btn-ghost btn-sm" id="priceCancelBtn" style="display:none" onclick="togglePriceEdit()">取消</button>
       </span>
     </div>
-    <div class="price-grid" id="priceGrid"></div>
-    <div class="price-edit-note" id="priceNote">手动扣费时输入资源数（GPU 按型号与卡数）与时长，将按"月单价 × 资源数 × 使用时长 ÷ 720"自动计算总价；外部推送账单的金额以推送值为准。</div>
+    <div id="priceBodyWrap">
+      <div class="price-grid" id="priceGrid"></div>
+      <div class="price-edit-note" id="priceNote">手动扣费时输入资源数（GPU 按型号与卡数）与时长，将按"月单价 × 资源数 × 使用时长 ÷ 720"自动计算总价；外部推送账单的金额以推送值为准。</div>
+    </div>
   </div>
 </div>
 
@@ -1135,6 +1138,15 @@ function searchOrg() {
 function toggleOrgPanel() {
   const wrap = $('orgTableWrap');
   const btn = $('orgToggleBtn');
+  const collapsed = wrap.style.display === 'none';
+  wrap.style.display = collapsed ? '' : 'none';
+  btn.textContent = collapsed ? '收起 ▾' : '展开 ▴';
+}
+
+// ================= 计费标准面板收起/展开 =================
+function togglePricePanel() {
+  const wrap = $('priceBodyWrap');
+  const btn = $('priceToggleBtn');
   const collapsed = wrap.style.display === 'none';
   wrap.style.display = collapsed ? '' : 'none';
   btn.textContent = collapsed ? '收起 ▾' : '展开 ▴';
