@@ -300,6 +300,24 @@
   .pager button:disabled { opacity: .4; cursor: not-allowed; }
   .pager button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
+  /* ===== 扣费明细：表头 + 数据行网格 ===== */
+  .dt-wrap { overflow-x: auto; padding-bottom: 4px; }
+  .dt-head, .dt-row { display: grid; gap: 8px; align-items: center; min-width: 900px; }
+  .dt-head {
+    padding: 9px 4px; font-size: 12px; color: var(--text-3);
+    border-bottom: 1px solid var(--border); background: #fbfcff;
+    border-radius: 8px 8px 0 0; white-space: nowrap;
+  }
+  .dt-row { margin-bottom: 8px; }
+  .dt-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-row .input { width: 100%; height: 36px; font-size: 13px; }
+  .dt-row .select { width: 100%; height: 36px; font-size: 13px; }
+  .dt-row .search-select .input { width: 100%; }
+  .dt-model-cell { display: flex; gap: 6px; }
+  .dt-model-cell .select { width: 68px; flex-shrink: 0; }
+  .dt-amount { text-align: right; font-weight: 600; color: var(--primary); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dt-del { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; }
+
   /* ===== 模态框 ===== */
   .mask {
     position: fixed; inset: 0; background: rgba(15, 23, 42, .5);
@@ -569,15 +587,18 @@
   </div>
 </div>
 
-<!-- 扣费模态框（支持批量多行） -->
+<!-- 扣费模态框（表头+数据行网格，支持批量多行） -->
 <div class="mask" id="maskDeduct">
-  <div class="modal" style="width:640px">
+  <div class="modal" style="width:940px;max-width:calc(100vw - 32px)">
     <div class="modal-head"><h3><svg class="ico" style="vertical-align:-3px"><use href="#i-arrow-down"/></svg> 手动扣费（支持批量）</h3><button class="modal-close" onclick="closeModal('deduct')">✕</button></div>
     <div class="modal-body">
       <div class="field">
-        <label>扣费明细 <span class="muted" style="font-weight:400">（每行：搜索用户 + 资源数 + 时长，自动按计费标准算价，可添加多行批量）</span></label>
-        <div id="dtRows"></div>
-        <button class="btn btn-ghost btn-sm" onclick="addDeductRow()" style="margin-top:4px">＋ 添加一行</button>
+        <label>扣费明细 <span class="muted" style="font-weight:400">（每行：用户 + 资源数 + 时长，自动按计费标准算价，可添加多行批量；列宽不足可横向滚动）</span></label>
+        <div class="dt-wrap">
+          <div class="dt-head" id="dtHead"></div>
+          <div id="dtRows"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="addDeductRow()" style="margin-top:8px">＋ 添加一行</button>
       </div>
       <div class="field"><label>扣费原因（整单统一，必填）</label><input class="input" id="dtRemark" placeholder="留审计依据"></div>
     </div>
@@ -1209,7 +1230,7 @@ function exportCsv(kind) {
 }
 const MASK_IDS = { recharge: 'maskRecharge', deduct: 'maskDeduct', transfer: 'maskTransfer' };
 function openModal(type) {
-  if (type === 'deduct' && !$('dtRows').children.length) addDeductRow();
+  if (type === 'deduct') { renderDeductHead(); if (!$('dtRows').children.length) addDeductRow(); }
   $(MASK_IDS[type]).classList.add('show');
 }
 function closeModal(type) {
@@ -1243,43 +1264,62 @@ async function doRecharge() {
 }
 
 let dtRowSeq = 0;
+// 动态列模板：用户 + 每个计费项 + 时长 + 金额 + 任务名 + 删除
+function deductCols() {
+  const itemCols = (state.items || []).map(it => it.item_type === 'model' ? '132px' : '92px').join(' ');
+  return 'minmax(150px,170px) ' + itemCols + ' 76px 92px 1fr 26px';
+}
+// 表头：显示每个计费项名称与单位
+function renderDeductHead() {
+  let h = '<div class="dt-col">用户</div>';
+  (state.items || []).forEach(it => {
+    const unitShort = String(it.unit || '').replace('元/', '').replace('/月', '');
+    if (it.item_type === 'model') {
+      h += '<div class="dt-col">' + esc(it.item_name) + '<br><span class="muted" style="font-size:11px">型号 / 数量</span></div>';
+    } else {
+      h += '<div class="dt-col">' + esc(it.item_name) + (unitShort ? '<br><span class="muted" style="font-size:11px">' + esc(unitShort) + '</span>' : '') + '</div>';
+    }
+  });
+  h += '<div class="dt-col">时长<br><span class="muted" style="font-size:11px">小时</span></div>' +
+       '<div class="dt-col" style="text-align:right">金额<br><span class="muted" style="font-size:11px">元</span></div>' +
+       '<div class="dt-col">任务名</div><div></div>';
+  $('dtHead').innerHTML = h;
+  $('dtHead').style.gridTemplateColumns = deductCols();
+}
 function addDeductRow() {
   dtRowSeq++;
   const n = dtRowSeq;
   const row = document.createElement('div');
   row.className = 'dt-row';
-  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap';
-  row.innerHTML =
-    '<div class="search-select" style="flex:1;min-width:150px">' +
+  row.style.gridTemplateColumns = deductCols();
+  let html = '';
+  // 用户列
+  html += '<div class="search-select" style="min-width:0">' +
       '<input class="input" id="dtU' + n + '" placeholder="搜索用户…" autocomplete="off">' +
-      '<div class="ss-dropdown" id="dtDrop' + n + '"></div>' +
-    '</div>' +
-    resourceInputs(n) +
-    '<input class="input" id="dtH' + n + '" type="number" min="0" step="0.5" placeholder="时长h" title="运行时长（小时）" style="width:82px" oninput="calcDeductRow(' + n + ')">' +
-    '<span class="mono" id="dtCalc' + n + '" style="min-width:88px;text-align:right;font-size:13px;color:var(--primary);font-weight:600">0.00元</span>' +
-    '<input class="input" id="dtT' + n + '" placeholder="任务名" style="width:110px">' +
-    '<button class="btn btn-ghost btn-sm" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
+      '<div class="ss-dropdown" id="dtDrop' + n + '"></div></div>';
+  // 计费项列（按配置动态）
+  (state.items || []).forEach(it => {
+    if (it.item_type === 'model') {
+      const opts = ['<option value="">型号</option>']
+        .concat((it.options || []).map(o => '<option value="' + esc(o.option_key) + '">' + esc(o.option_name) + '</option>')).join('');
+      html += '<div class="dt-model-cell">' +
+        '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
+        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="1" placeholder="数量" oninput="calcDeductRow(' + n + ')">' +
+      '</div>';
+    } else {
+      html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="0" oninput="calcDeductRow(' + n + ')">';
+    }
+  });
+  // 时长 / 金额 / 任务名 / 删除
+  html += '<input class="input" id="dtH' + n + '" type="number" min="0" step="0.5" placeholder="0" oninput="calcDeductRow(' + n + ')">' +
+      '<div class="dt-amount" id="dtCalc' + n + '" title="">0.00</div>' +
+      '<input class="input" id="dtT' + n + '" placeholder="任务名">' +
+      '<button class="btn btn-ghost btn-sm dt-del" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
+  row.innerHTML = html;
   $('dtRows').appendChild(row);
   initSearchSelect('dtU' + n, 'dtDrop' + n);
 }
 
-// 按计费项配置动态生成资源输入：数量型=数字框；型号型=型号下拉+数量框
-function resourceInputs(n) {
-  let html = '';
-  (state.items || []).forEach(it => {
-    if (it.item_type === 'model') {
-      const opts = ['<option value="">' + esc(it.item_name) + '型号</option>']
-        .concat((it.options || []).map(o => '<option value="' + esc(o.option_key) + '">' + esc(o.option_name) + '</option>')).join('');
-      html += '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" title="' + esc(it.item_name) + '型号（按型号定价）" style="width:100px;height:36px" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
-              '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="1" placeholder="' + esc(it.item_name) + '数" title="' + esc(it.item_name) + '数量" style="width:74px" oninput="calcDeductRow(' + n + ')">';
-    } else {
-      html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + esc(it.item_name) + '" title="' + esc(it.item_name) + ' ' + esc(it.unit) + '" style="width:92px" oninput="calcDeductRow(' + n + ')">';
-    }
-  });
-  return html;
-}
-
-// 收集一行的资源明细
 function collectRowResources(n) {
   const res = [];
   (state.items || []).forEach(it => {
