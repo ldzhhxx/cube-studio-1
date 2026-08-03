@@ -28,6 +28,16 @@
     --shadow-hover: 0 10px 28px rgba(31, 45, 90, .13);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ===== 版本标识 ===== */
+  .build-tag {
+    position: fixed; right: 10px; bottom: 8px; z-index: 999;
+    font-size: 10.5px; color: rgba(90, 97, 114, .45);
+    background: rgba(255,255,255,.7); padding: 2px 8px; border-radius: 6px;
+    font-family: "SF Mono", Consolas, monospace; user-select: none;
+    pointer-events: none;
+  }
+
   .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
   .ico-sm { width: 13px; height: 13px; }
   .ico-lg { width: 22px; height: 22px; }
