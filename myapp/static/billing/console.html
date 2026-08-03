@@ -326,6 +326,21 @@
   .dt-model-cell { display: flex; gap: 6px; align-items: center; }
   .dt-model-cell .select { width: 118px; flex-shrink: 0; font-size: 12.5px; }
   .dt-model-cell .input { flex: 1; min-width: 60px; width: auto; }
+  .dt-model-list { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+  .dt-model-item {
+    display: flex; align-items: center; gap: 7px; padding: 4px 8px;
+    border-radius: 7px; cursor: pointer; font-size: 12.5px; color: var(--text-2);
+    border: 1px solid transparent; transition: all .12s ease; user-select: none;
+  }
+  .dt-model-item:hover { background: var(--primary-light); }
+  .dt-model-item.selected { background: var(--primary-light); color: var(--primary-dark); border-color: #c9d3fb; font-weight: 600; }
+  .dt-model-dot {
+    width: 13px; height: 13px; border-radius: 50%; border: 2px solid #c9cfe0;
+    flex-shrink: 0; transition: all .12s ease;
+  }
+  .dt-model-item.selected .dt-model-dot { border-color: var(--primary); box-shadow: inset 0 0 0 3px #fff, 0 0 0 1px var(--primary); }
+  .dt-model-price { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+  .dt-model-item.selected .dt-model-price { color: var(--primary); }
   .dt-amount { text-align: right; font-weight: 600; color: var(--primary); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .dt-del { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; }
 
@@ -1291,6 +1306,16 @@ async function doRecharge() {
 }
 
 let dtRowSeq = 0;
+const rowModelSel = {};  // 每行选中的型号 {n: {item_key}}
+
+// 点选型号：高亮 + 记录选中 + 重新算价
+function selectModel(n, itemKey, childKey, el) {
+  rowModelSel[n] = { item_key: childKey };
+  const list = el.parentElement;
+  list.querySelectorAll('.dt-model-item').forEach(x => x.classList.remove('selected'));
+  el.classList.add('selected');
+  calcDeductRow(n);
+}
 // 从单位解析数量单位：'元/G/月' → 'G'；'元/卡/月' → '卡'
 function unitQuantity(unit) {
   const m = String(unit || '').match(/元\/([^/]+)\/月/);
@@ -1333,14 +1358,17 @@ function addDeductRow() {
   // 计费项列（按配置动态）
   (state.items || []).forEach(it => {
     if (it.item_type === 'model') {
-      // 型号分组：下拉选型号 + 一个数量框（只填一个数量，选哪个型号就用哪个的价格）
+      // 型号分组：列出所有型号点选（高亮），后面只有一个数量框（按选中型号的单价计费）
       const uq = unitQuantity(it.unit);
-      const opts = ['<option value="">选择型号</option>']
-        .concat((it.children || []).map(c =>
-          '<option value="' + esc(c.item_key) + '">' + esc(c.item_name) + '（' + c.price_yuan + '元/' + (uq ? esc(uq) : '单位') + '/月）</option>')).join('');
-      html += '<div class="dt-model-cell">' +
-        '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
-        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '数量') + '" title="数量（' + (uq ? esc(uq) : '单位') + '），所选型号的单价计费" oninput="calcDeductRow(' + n + ')">' +
+      const modelList = (it.children || []).map((c, idx) => {
+        const sel = idx === 0 ? ' selected' : '';
+        if (idx === 0) rowModelSel[n] = { item_key: c.item_key };
+        return '<div class="dt-model-item' + sel + '" onclick="selectModel(' + n + ', \'' + esc(it.item_key).replace(/'/g, "\\'") + '\', \'' + esc(c.item_key).replace(/'/g, "\\'") + '\', this)">' +
+          '<span class="dt-model-dot"></span>' + esc(c.item_name) +
+          '<span class="dt-model-price">' + c.price_yuan + '元/' + (uq ? esc(uq) : '单位') + '/月</span></div>';
+      }).join('');
+      html += '<div>' + (modelList || '<span class="muted" style="font-size:12px">暂无型号，请先在计费标准中添加</span>') +
+        '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + (uq ? esc(uq) : '数量') + '" title="数量（' + (uq ? esc(uq) : '单位') + '），按选中的型号单价计费" oninput="calcDeductRow(' + n + ')">' +
       '</div>';
     } else {
       html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="0" oninput="calcDeductRow(' + n + ')">';
@@ -1360,12 +1388,11 @@ function collectRowResources(n) {
   const res = [];
   (state.items || []).forEach(it => {
     if (it.item_type === 'model') {
-      // 型号分组：下拉选中的型号 + 数量（一行一个型号，多型号加行）
-      const oEl = $('dtO' + n + '_' + it.item_key);
+      // 型号分组：点选中的型号 + 数量
+      const sel = rowModelSel[n];
       const qEl = $('dtQ' + n + '_' + it.item_key);
-      const opt = oEl ? oEl.value : '';
       const q = parseFloat(qEl ? qEl.value : 0) || 0;
-      if (opt && q > 0) res.push({ item_key: opt, quantity: q });
+      if (sel && sel.item_key && q > 0) res.push({ item_key: sel.item_key, quantity: q });
       return;
     }
     const qEl = $('dtQ' + n + '_' + it.item_key);
