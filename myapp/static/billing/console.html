@@ -28,6 +28,9 @@
     --shadow-hover: 0 10px 28px rgba(31, 45, 90, .13);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .ico-sm { width: 13px; height: 13px; }
+  .ico-lg { width: 22px; height: 22px; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     background: var(--bg);
@@ -59,9 +62,9 @@
   .hero-title { display: flex; align-items: center; gap: 14px; }
   .hero-title .logo {
     width: 44px; height: 44px; border-radius: 12px;
-    background: rgba(255,255,255,.16);
+    background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.28);
   }
   .hero-title h1 { font-size: 21px; font-weight: 600; letter-spacing: .5px; }
   .hero-title p { font-size: 12px; opacity: .75; margin-top: 3px; }
@@ -95,6 +98,47 @@
   .stat-value small { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
   .stat-extra { font-size: 12px; color: var(--text-3); margin-top: 5px; }
   .stat-ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+
+  /* ===== 计费标准面板 ===== */
+  .price-panel {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .price-head {
+    display: flex; align-items: center; gap: 12px; padding: 13px 20px;
+    border-bottom: 1px solid var(--border); background: #fbfcff; flex-wrap: wrap;
+  }
+  .price-head b { font-size: 15px; }
+  .price-head .muted { font-size: 12.5px; }
+  .price-head .actions { margin-left: auto; display: flex; gap: 8px; }
+  .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .price-cell { padding: 16px 20px; border-right: 1px solid #f1f3fa; }
+  .price-cell:last-child { border-right: none; }
+  .price-cell .res { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+  .price-cell .res-ico {
+    width: 28px; height: 28px; border-radius: 8px; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 14px;
+  }
+  .price-cell .val { font-size: 24px; font-weight: 800; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .price-cell .val small { font-size: 12.5px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
+  .price-cell .meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+  .price-cell .input { width: 100%; height: 36px; margin-top: 8px; text-align: right; }
+  .price-edit-note { font-size: 12px; color: var(--text-3); padding: 10px 20px; border-top: 1px solid #f1f3fa; }
+  @media (max-width: 900px) { .price-grid { grid-template-columns: 1fr; } .price-cell { border-right: none; border-bottom: 1px solid #f1f3fa; } }
+
+  /* ===== API 说明模态框 ===== */
+  .api-code {
+    background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 14px 16px;
+    font-family: "SF Mono", Consolas, Menlo, monospace; font-size: 12.5px;
+    line-height: 1.7; overflow-x: auto; white-space: pre; margin: 8px 0 16px;
+  }
+  .api-code .cmt { color: #64748b; }
+  .api-code .key { color: #93c5fd; }
+  .api-code .str { color: #86efac; }
+  .api-block { margin-bottom: 6px; }
+  .api-block h4 { font-size: 14px; margin: 14px 0 8px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .api-block h4 .badge-m { background: var(--primary-light); color: var(--primary); border-radius: 6px; padding: 1px 8px; font-size: 11px; }
+  .api-tip { font-size: 12.5px; color: var(--text-3); margin: 6px 0; }
 
   /* ===== 组织架构（中心-部门 树形表） ===== */
   .section { max-width: 1280px; margin: 20px auto 0; padding: 0 32px; }
@@ -312,39 +356,81 @@
 </head>
 <body>
 
+<!-- 线条图标库（Feather 风格） -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></symbol>
+  <symbol id="i-trend" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+</svg>
+
 <!-- 头部 -->
 <div class="hero">
   <div class="hero-top">
     <div class="hero-title">
-      <div class="logo">💰</div>
+      <div class="logo"><svg class="ico ico-lg"><use href="#i-wallet"/></svg></div>
       <div>
         <h1>计费中心</h1>
         <p>外部算费 · 平台记账 · 实时对账</p>
       </div>
     </div>
     <div class="hero-actions">
-      <button class="btn btn-white" onclick="openModal('recharge')">⬆ 充值</button>
-      <button class="btn btn-white" onclick="openModal('deduct')">⬇ 扣费</button>
-      <button class="btn btn-white" onclick="openModal('transfer')">⇄ 转账</button>
-      <button class="btn btn-white" onclick="refreshAll()">⟳ 刷新</button>
+      <button class="btn btn-white" onclick="openModal('recharge')"><svg class="ico ico-sm"><use href="#i-arrow-up"/></svg>充值</button>
+      <button class="btn btn-white" onclick="openModal('deduct')"><svg class="ico ico-sm"><use href="#i-arrow-down"/></svg>扣费</button>
+      <button class="btn btn-white" onclick="openModal('transfer')"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>转账</button>
+      <button class="btn btn-white" onclick="openApiDoc()"><svg class="ico ico-sm"><use href="#i-book"/></svg>API 接入说明</button>
+      <button class="btn btn-white" onclick="refreshAll()"><svg class="ico ico-sm"><use href="#i-refresh"/></svg>刷新</button>
     </div>
   </div>
 </div>
 
 <!-- 统计卡片 -->
 <div class="stats" id="statsRow">
-  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#eef1fe;color:#4f6ef7">👥</span>平台用户</div><div class="stat-value" id="stUsers">–</div><div class="stat-extra" id="stOrgs">部门分布加载中…</div></div>
-  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#e8f9ef;color:#22c55e">💳</span>用户总余额</div><div class="stat-value" id="stBalance">–</div><div class="stat-extra" id="stBalanceUsers">–</div></div>
-  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#eef1fe;color:#4f6ef7">⬆</span>累计充值</div><div class="stat-value" id="stRecharge">–</div><div class="stat-extra">所有用户充值合计</div></div>
-  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#fdecec;color:#ef4444">⬇</span>累计消费</div><div class="stat-value" id="stConsume">–</div><div class="stat-extra" id="stBills">账单条数加载中…</div></div>
-  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#fef4e2;color:#f59e0b">📈</span>今日消费</div><div class="stat-value" id="stToday">–</div><div class="stat-extra">今天 00:00 起</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#eef1fe;color:#4f6ef7"><svg class="ico"><use href="#i-users"/></svg></span>平台用户</div><div class="stat-value" id="stUsers">–</div><div class="stat-extra" id="stOrgs">部门分布加载中…</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#e8f9ef;color:#22c55e"><svg class="ico"><use href="#i-card"/></svg></span>用户总余额</div><div class="stat-value" id="stBalance">–</div><div class="stat-extra" id="stBalanceUsers">–</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#eef1fe;color:#4f6ef7"><svg class="ico"><use href="#i-arrow-up"/></svg></span>累计充值</div><div class="stat-value" id="stRecharge">–</div><div class="stat-extra">所有用户充值合计</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#fdecec;color:#ef4444"><svg class="ico"><use href="#i-arrow-down"/></svg></span>累计消费</div><div class="stat-value" id="stConsume">–</div><div class="stat-extra" id="stBills">账单条数加载中…</div></div>
+  <div class="stat-card"><div class="stat-label"><span class="stat-ico" style="background:#fef4e2;color:#f59e0b"><svg class="ico"><use href="#i-trend"/></svg></span>今日消费</div><div class="stat-value" id="stToday">–</div><div class="stat-extra">今天 00:00 起</div></div>
+</div>
+
+<!-- 计费标准（管理员可编辑） -->
+<div class="section">
+  <div class="price-panel">
+    <div class="price-head">
+      <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-tag"/></svg> 计费标准</b>
+      <span class="muted" id="priceMeta">资源月单价 · 按使用时长折算（每月 720 小时）</span>
+      <span class="actions" id="priceActions">
+        <button class="btn btn-ghost btn-sm" id="priceEditBtn" onclick="togglePriceEdit()">修改价格</button>
+        <button class="btn btn-primary btn-sm" id="priceSaveBtn" style="display:none" onclick="savePrices()">保存</button>
+        <button class="btn btn-ghost btn-sm" id="priceCancelBtn" style="display:none" onclick="togglePriceEdit()">取消</button>
+      </span>
+    </div>
+    <div class="price-grid" id="priceGrid"></div>
+    <div class="price-edit-note" id="priceNote">手动扣费时输入资源数与时长，将按"月单价 × 资源数 × 使用时长 ÷ 720"自动计算总价；外部推送账单的金额以推送值为准。</div>
+  </div>
 </div>
 
 <!-- 组织架构（中心-部门树） -->
 <div class="section" id="orgSection">
   <div class="org-panel">
     <div class="org-toolbar">
-      <b>🏢 组织架构</b>
+      <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-layers"/></svg> 组织架构</b>
       <button class="btn btn-ghost btn-sm" id="orgToggleBtn" onclick="toggleOrgPanel()" title="收起/展开组织架构，节省页面空间">收起 ▾</button>
       <input class="input" id="orgSearch" placeholder="搜索中心 / 部门…" oninput="searchOrg()">
       <span class="org-summary" id="orgSummary"></span>
@@ -361,9 +447,9 @@
 <!-- 主面板 -->
 <div class="panel">
   <div class="tabs">
-    <div class="tab active" data-tab="wallet" onclick="switchTab('wallet')">💳 余额列表 <span class="count-badge" id="badgeWallet">0</span></div>
-    <div class="tab" data-tab="bill" onclick="switchTab('bill')">🧾 费用明细 <span class="count-badge" id="badgeBill">0</span></div>
-    <div class="tab" data-tab="log" onclick="switchTab('log')">📒 资金流水 <span class="count-badge" id="badgeLog">0</span></div>
+    <div class="tab active" data-tab="wallet" onclick="switchTab('wallet')"><svg class="ico ico-sm"><use href="#i-card"/></svg>余额列表 <span class="count-badge" id="badgeWallet">0</span></div>
+    <div class="tab" data-tab="bill" onclick="switchTab('bill')"><svg class="ico ico-sm"><use href="#i-file"/></svg>费用明细 <span class="count-badge" id="badgeBill">0</span></div>
+    <div class="tab" data-tab="log" onclick="switchTab('log')"><svg class="ico ico-sm"><use href="#i-list"/></svg>资金流水 <span class="count-badge" id="badgeLog">0</span></div>
   </div>
 
   <!-- 余额 -->
@@ -407,7 +493,7 @@
       <input class="input" id="bEnd" type="date" title="结束日期">
       <button class="btn btn-primary btn-sm" onclick="loadBills()">查询</button>
       <button class="btn btn-ghost btn-sm" onclick="resetBillFilter()">重置</button>
-      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="exportCsv('bills')">⭳ 导出CSV</button>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="exportCsv('bills')"><svg class="ico ico-sm"><use href="#i-arrow-down"/></svg>导出CSV</button>
     </div>
     <table>
       <thead><tr>
@@ -432,7 +518,7 @@
       </select>
       <input class="input" id="lUser" placeholder="用户名…">
       <button class="btn btn-primary btn-sm" onclick="loadLogs()">查询</button>
-      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="exportCsv('logs')">⭳ 导出CSV</button>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="exportCsv('logs')"><svg class="ico ico-sm"><use href="#i-arrow-down"/></svg>导出CSV</button>
     </div>
     <table>
       <thead><tr>
@@ -451,7 +537,7 @@
 <!-- 充值模态框 -->
 <div class="mask" id="maskRecharge">
   <div class="modal">
-    <div class="modal-head"><h3>⬆ 给用户充值</h3><button class="modal-close" onclick="closeModal('recharge')">✕</button></div>
+    <div class="modal-head"><h3><svg class="ico" style="vertical-align:-3px"><use href="#i-arrow-up"/></svg> 给用户充值</h3><button class="modal-close" onclick="closeModal('recharge')">✕</button></div>
     <div class="modal-body">
       <div class="field"><label>用户名（搜索 ab_user）</label><div class="search-select"><input class="input" id="rcUser" placeholder="输入关键字搜索用户…" autocomplete="off"><div class="ss-dropdown" id="rcUserDrop"></div></div></div>
       <div class="field"><label>金额（元）</label><input class="input" id="rcAmount" type="number" min="0.01" step="0.01" placeholder="如 100.00"></div>
@@ -467,10 +553,10 @@
 <!-- 扣费模态框（支持批量多行） -->
 <div class="mask" id="maskDeduct">
   <div class="modal" style="width:640px">
-    <div class="modal-head"><h3>⬇ 手动扣费（支持批量）</h3><button class="modal-close" onclick="closeModal('deduct')">✕</button></div>
+    <div class="modal-head"><h3><svg class="ico" style="vertical-align:-3px"><use href="#i-arrow-down"/></svg> 手动扣费（支持批量）</h3><button class="modal-close" onclick="closeModal('deduct')">✕</button></div>
     <div class="modal-body">
       <div class="field">
-        <label>扣费明细 <span class="muted" style="font-weight:400">（每行：搜索用户 + 金额 + 任务名，可添加多行批量扣费）</span></label>
+        <label>扣费明细 <span class="muted" style="font-weight:400">（每行：搜索用户 + 资源数 + 时长，自动按计费标准算价，可添加多行批量）</span></label>
         <div id="dtRows"></div>
         <button class="btn btn-ghost btn-sm" onclick="addDeductRow()" style="margin-top:4px">＋ 添加一行</button>
       </div>
@@ -486,7 +572,7 @@
 <!-- 转账模态框 -->
 <div class="mask" id="maskTransfer">
   <div class="modal">
-    <div class="modal-head"><h3>⇄ 用户间转账</h3><button class="modal-close" onclick="closeModal('transfer')">✕</button></div>
+    <div class="modal-head"><h3><svg class="ico" style="vertical-align:-3px"><use href="#i-repeat"/></svg> 用户间转账</h3><button class="modal-close" onclick="closeModal('transfer')">✕</button></div>
     <div class="modal-body">
       <div class="field"><label>转出用户（搜索 ab_user）</label><div class="search-select"><input class="input" id="trFrom" placeholder="输入关键字搜索用户…" autocomplete="off"><div class="ss-dropdown" id="trFromDrop"></div></div></div>
       <div class="field"><label>转入用户（搜索 ab_user）</label><div class="search-select"><input class="input" id="trTo" placeholder="输入关键字搜索用户…" autocomplete="off"><div class="ss-dropdown" id="trToDrop"></div></div></div>
@@ -496,6 +582,69 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal('transfer')">取消</button>
       <button class="btn btn-primary" id="trSubmit" onclick="doTransfer()">确认转账</button>
+    </div>
+  </div>
+</div>
+
+<!-- API 接入说明模态框（管理员查看批量导入接口文档） -->
+<div class="mask" id="maskApiDoc">
+  <div class="modal" style="width:760px">
+    <div class="modal-head"><h3><svg class="ico" style="vertical-align:-3px"><use href="#i-book"/></svg> API 接入说明</h3><button class="modal-close" onclick="$('maskApiDoc').classList.remove('show')">✕</button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div class="api-tip">以下接口供外部费用清单系统调用，鉴权统一使用请求头 <b>X-Billing-Token</b>（值在平台配置 BILLING_TOKEN 中设置）。</div>
+
+      <div class="api-block">
+        <h4><span class="badge-m">POST</span> 推送费用明细（外部系统对接主接口，支持一次批量多条）</h4>
+        <div class="api-code">POST /billing/api/push
+Content-Type: application/json
+X-Billing-Token: &lt;你的token&gt;
+
+[
+  {
+    "username": "zhangsan",            <span class="cmt"># ab_user 中的用户名</span>
+    "task_name": "train-resnet50",
+    "pod_name": "resnet50-x7f2k",       <span class="cmt"># 幂等键：重复推送只修正数据，不重复扣费</span>
+    "cpu": 4, "memory": 16,            <span class="cmt"># 资源数（核/GB）</span>
+    "gpu_num": 1, "gpu_memory": 16,    <span class="cmt"># GPU 卡数 / 显存 GB</span>
+    "duration_seconds": 3600,
+    "amount_fen": 1234,                <span class="cmt"># 费用（分），金额以推送为准</span>
+    "start_time": "2026-08-03 10:00:00",
+    "end_time": "2026-08-03 11:00:00"
+  }
+]</div>
+        <div class="api-tip">返回 result 取值：<b>settled</b> 已入账扣费 / <b>updated</b> 重复推送已修正（金额变化自动差额补扣/退回）/ <b>settled_no_user</b> 用户名对不上未扣费 / <b>skip</b> 缺 pod_name / <b>reject</b> 金额非法（负数或超 100 万元）/ <b>error</b> 单条异常（不影响同批其他数据）。</div>
+      </div>
+
+      <div class="api-block">
+        <h4><span class="badge-m">POST</span> 手动扣费（管理员页面同款接口，支持单个对象或数组批量）</h4>
+        <div class="api-code">POST /billing/api/deduct
+Content-Type: application/json
+X-Billing-Token: &lt;你的token&gt;   <span class="cmt"># 或管理员会话</span>
+
+[ <span class="cmt"># 单条可传对象 {"username": ...}</span>
+  {
+    "username": "zhangsan",
+    "cpu": 4, "memory": 16, "gpu_memory": 16,   <span class="cmt"># 资源数（自动算价用）</span>
+    "duration_seconds": 7200,
+    "amount_fen": 2468,              <span class="cmt"># 金额（分）</span>
+    "task_name": "手动扣费任务",
+    "remark": "扣费原因"
+  }
+]</div>
+        <div class="api-tip">pod_name 不传自动生成 manual-用户名-时间戳；传了则必须唯一。逐笔容错，返回 {count, ok, failed, results[]}。</div>
+      </div>
+
+      <div class="api-block">
+        <h4><span class="badge-m">GET</span> 对账查询（外部核对平台入账状态）</h4>
+        <div class="api-code">GET /billing/api/list?username=zhangsan&amp;pod_name=xxx&amp;start_time=2026-08-01&amp;end_time=2026-08-03&amp;limit=200
+X-Billing-Token: &lt;你的token&gt;</div>
+      </div>
+
+      <div class="api-block">
+        <h4><span class="badge-m">GET</span> 计费标准（登录用户可查，管理员可改）</h4>
+        <div class="api-code">GET /billing/api/prices                  <span class="cmt"># 所有登录用户</span>
+POST /billing/api/admin/prices      <span class="cmt"># 管理员修改 {"cpu":20000,"memory":10000,"gpu_memory":100000} 单位：分/单位/月</span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -530,7 +679,7 @@ const $ = id => document.getElementById(id);
 function toast(msg, type) {
   const el = document.createElement('div');
   el.className = 'toast ' + (type || '');
-  el.innerHTML = (type === 'error' ? '❌ ' : type === 'success' ? '✅ ' : 'ℹ️ ') + msg;
+  el.innerHTML = ((type === 'error' ? '<svg class="ico" style="vertical-align:-3px"><use href="#i-alert"/></svg> ' : type === 'success' ? '<svg class="ico" style="vertical-align:-3px"><use href="#i-check"/></svg> ' : '<svg class="ico" style="vertical-align:-3px"><use href="#i-info"/></svg> ')) + msg;
   $('toastWrap').appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 2600);
 }
@@ -1007,14 +1156,14 @@ async function loadOrgInline(org, el) {
         '<b>' + esc(org) + '</b>' +
         '<span class="oi-summary">' + s.user_count + ' 位成员 · 累计消费 <b class="mono">' + s.total_consume_yuan.toFixed(2) + '</b> 元 · ' + s.bill_count + ' 笔账单</span>' +
         '<span class="oi-actions">' +
-          '<button class="btn btn-ghost btn-sm" onclick="exportOrgInline(\'' + esc(org).replace(/'/g, "\\'") + '\', \'bills\')">⭳ 明细CSV</button>' +
-          '<button class="btn btn-ghost btn-sm" onclick="exportOrgInline(\'' + esc(org).replace(/'/g, "\\'") + '\', \'logs\')">⭳ 流水CSV</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="exportOrgInline(\'' + esc(org).replace(/'/g, "\\'") + '\', \'bills\')"><svg class="ico ico-sm"><use href="#i-arrow-down"/></svg>明细CSV</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="exportOrgInline(\'' + esc(org).replace(/'/g, "\\'") + '\', \'logs\')"><svg class="ico ico-sm"><use href="#i-arrow-down"/></svg>流水CSV</button>' +
         '</span>' +
       '</div>' +
       '<div class="oi-cols">' +
-        '<div class="oi-col"><h4>👥 成员 <span class="cnt">' + w.count + '</span></h4><table class="oi-table"><tbody>' + members + '</tbody></table></div>' +
-        '<div class="oi-col"><h4>🧾 费用明细 <span class="cnt">' + b.count + '</span></h4><table class="oi-table"><tbody>' + bills + '</tbody></table></div>' +
-        '<div class="oi-col"><h4>📒 资金流水 <span class="cnt">' + l.count + '</span></h4><table class="oi-table"><tbody>' + logs + '</tbody></table></div>' +
+        '<div class="oi-col"><h4><svg class="ico ico-sm"><use href="#i-users"/></svg> 成员 <span class="cnt">' + w.count + '</span></h4><table class="oi-table"><tbody>' + members + '</tbody></table></div>' +
+        '<div class="oi-col"><h4><svg class="ico ico-sm"><use href="#i-file"/></svg> 费用明细 <span class="cnt">' + b.count + '</span></h4><table class="oi-table"><tbody>' + bills + '</tbody></table></div>' +
+        '<div class="oi-col"><h4><svg class="ico ico-sm"><use href="#i-list"/></svg> 资金流水 <span class="cnt">' + l.count + '</span></h4><table class="oi-table"><tbody>' + logs + '</tbody></table></div>' +
       '</div>';
   } catch (e) {
     el.innerHTML = '<div class="oi-loading" style="color:var(--danger)">加载失败：' + esc(e.message) + '</div>';
@@ -1080,17 +1229,36 @@ function addDeductRow() {
   const n = dtRowSeq;
   const row = document.createElement('div');
   row.className = 'dt-row';
-  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap';
   row.innerHTML =
     '<div class="search-select" style="flex:1;min-width:150px">' +
       '<input class="input" id="dtU' + n + '" placeholder="搜索用户…" autocomplete="off">' +
       '<div class="ss-dropdown" id="dtDrop' + n + '"></div>' +
     '</div>' +
-    '<input class="input" id="dtA' + n + '" type="number" min="0.01" step="0.01" placeholder="金额(元)" style="width:110px">' +
-    '<input class="input" id="dtT' + n + '" placeholder="任务名" style="width:140px">' +
+    '<input class="input" id="dtC' + n + '" type="number" min="0" step="0.1" placeholder="CPU核" title="CPU 核数" style="width:86px" oninput="calcDeductRow(' + n + ')">' +
+    '<input class="input" id="dtM' + n + '" type="number" min="0" step="0.1" placeholder="内存GB" title="内存（GB）" style="width:92px" oninput="calcDeductRow(' + n + ')">' +
+    '<input class="input" id="dtG' + n + '" type="number" min="0" step="0.1" placeholder="显存GB" title="显存（GB）" style="width:92px" oninput="calcDeductRow(' + n + ')">' +
+    '<input class="input" id="dtH' + n + '" type="number" min="0" step="0.5" placeholder="时长h" title="运行时长（小时）" style="width:82px" oninput="calcDeductRow(' + n + ')">' +
+    '<span class="mono" id="dtCalc' + n + '" style="min-width:92px;text-align:right;font-size:13px;color:var(--primary);font-weight:600">0.00元</span>' +
+    '<input class="input" id="dtT' + n + '" placeholder="任务名" style="width:120px">' +
     '<button class="btn btn-ghost btn-sm" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
   $('dtRows').appendChild(row);
   initSearchSelect('dtU' + n, 'dtDrop' + n);
+}
+
+// 按计费标准自动算价（按月计费，按使用时长折算：月价 × 资源数 × 使用小时 / 720）
+const MONTH_HOURS = 720;  // 一个月按 720 小时折算
+function calcDeductRow(n) {
+  const cpu = parseFloat($('dtC' + n).value) || 0;
+  const mem = parseFloat($('dtM' + n).value) || 0;
+  const gpu = parseFloat($('dtG' + n).value) || 0;
+  const hours = parseFloat($('dtH' + n).value) || 0;
+  const p = state.prices || {};
+  const monthFen = cpu * (p.cpu || 0) + mem * (p.memory || 0) + gpu * (p.gpu_memory || 0);
+  const totalFen = Math.round(monthFen * hours / MONTH_HOURS);
+  $('dtCalc' + n).textContent = (totalFen / 100).toFixed(2) + '元';
+  $('dtCalc' + n).title = '按月计费折算：' + (monthFen / 100).toFixed(2) + ' 元/月 × ' + hours + ' 小时 ÷ 720';
+  return totalFen;
 }
 
 async function doDeduct() {
@@ -1099,14 +1267,23 @@ async function doDeduct() {
   const items = [];
   for (let i = 1; i <= dtRowSeq; i++) {
     const u = requirePicked('dtU' + i);
-    const aEl = $('dtA' + i), tEl = $('dtT' + i);
-    if (!aEl) continue;  // 行已被删除
-    const amount = parseFloat(aEl.value);
-    if (!u && !amount) continue;  // 跳过全空行
+    const cEl = $('dtC' + i), mEl = $('dtM' + i), gEl = $('dtG' + i), hEl = $('dtH' + i), tEl = $('dtT' + i);
+    if (!cEl) continue;  // 行已被删除
+    const cpu = parseFloat(cEl.value) || 0, mem = parseFloat(mEl.value) || 0;
+    const gpu = parseFloat(gEl.value) || 0, hours = parseFloat(hEl.value) || 0;
+    const amountFen = calcDeductRow(i);
+    if (!u && !cpu && !mem && !gpu && !hours) continue;  // 跳过全空行
     if (!u) return toast('第 ' + i + ' 行：请从搜索结果中选择用户', 'error');
-    if (!amount || amount <= 0) return toast('第 ' + i + ' 行：请输入有效金额', 'error');
-    if (amount > MAX_AMOUNT_YUAN) return toast('第 ' + i + ' 行：金额不能超过 ' + MAX_AMOUNT_YUAN + ' 元', 'error');
-    items.push({ username: u, amount_fen: Math.round(amount * 100), task_name: (tEl ? tEl.value : '').trim(), remark });
+    if (amountFen <= 0) return toast('第 ' + i + ' 行：请填写资源数与时长（当前自动算价为 0 元）', 'error');
+    if (amountFen > MAX_AMOUNT_YUAN * 100) return toast('第 ' + i + ' 行：金额不能超过 ' + MAX_AMOUNT_YUAN + ' 元', 'error');
+    items.push({
+      username: u,
+      cpu: cpu, memory: mem, gpu_num: 0, gpu_memory: gpu,
+      duration_seconds: Math.round(hours * 3600),
+      amount_fen: amountFen,
+      task_name: (tEl ? tEl.value : '').trim(),
+      remark,
+    });
   }
   if (!items.length) return toast('请至少填写一行扣费明细', 'error');
   const btn = $('dtSubmit');
@@ -1153,7 +1330,62 @@ async function doTransfer() {
   btn.disabled = false; btn.textContent = '确认转账';
 }
 
-function refreshAll() { loadStats(); loadWallets(); loadBills(); loadLogs(); }
+// ================= 计费标准（管理员可编辑） =================
+const PRICE_META = {
+  cpu: { name: 'CPU', ico: 'cpu', color: '#eef1fe', colorTxt: '#4f6ef7' },
+  memory: { name: '内存', ico: 'drive', color: '#e8f9ef', colorTxt: '#22c55e' },
+  gpu_memory: { name: '显存', ico: 'monitor', color: '#fef4e2', colorTxt: '#f59e0b' },
+};
+let priceEditing = false;
+
+async function loadPrices() {
+  try {
+    const r = await api('/billing/api/prices');
+    state.prices = {};
+    (r.prices || []).forEach(p => { state.prices[p.resource_type] = p.price_fen; });
+    $('priceGrid').innerHTML = (r.prices || []).map(p => {
+      const meta = PRICE_META[p.resource_type] || { name: p.resource_type, ico: '💠', color: '#eef1fe' };
+      const valCell = priceEditing
+        ? '<input class="input" id="priceIn_' + p.resource_type + '" type="number" min="0" step="0.01" value="' + p.price_yuan + '">'
+        : p.price_yuan + '<small>元</small>';
+      return '<div class="price-cell">' +
+        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '">' + meta.ico + '</span>' + meta.name + '</div>' +
+        '<div class="val">' + valCell + '</div>' +
+        '<div class="meta">' + esc(p.unit) + (p.updated_by ? ' · 修改人 ' + esc(p.updated_by) : '') + '</div></div>';
+    }).join('');
+  } catch (e) { $('priceGrid').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>'; }
+}
+function togglePriceEdit() {
+  priceEditing = !priceEditing;
+  $('priceEditBtn').style.display = priceEditing ? 'none' : '';
+  $('priceSaveBtn').style.display = priceEditing ? '' : 'none';
+  $('priceCancelBtn').style.display = priceEditing ? '' : 'none';
+  loadPrices();
+}
+async function savePrices() {
+  const body = {};
+  ['cpu', 'memory', 'gpu_memory'].forEach(t => {
+    const el = $('priceIn_' + t);
+    if (el) body[t] = Math.round(parseFloat(el.value || 0) * 100);
+  });
+  try {
+    const r = await api('/billing/api/admin/prices', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    state.prices = {};
+    (r.prices || []).forEach(p => { state.prices[p.resource_type] = p.price_fen; });
+    priceEditing = false;
+    $('priceEditBtn').style.display = '';
+    $('priceSaveBtn').style.display = 'none';
+    $('priceCancelBtn').style.display = 'none';
+    toast('计费标准已更新', 'success');
+    loadPrices();
+  } catch (e) { toast('保存失败：' + e.message, 'error'); }
+}
+
+function openApiDoc() { $('maskApiDoc').classList.add('show'); }
+
+function refreshAll() { loadStats(); loadPrices(); loadWallets(); loadBills(); loadLogs(); }
 
 // ================= 启动 =================
 initSearchSelect('rcUser', 'rcUserDrop');
@@ -1162,6 +1394,7 @@ initSearchSelect('trTo', 'trToDrop');
 initOrgSelect('w');
 initOrgSelect('b');
 loadStats();
+loadPrices();
 loadWallets();
 loadBills();
 loadLogs();

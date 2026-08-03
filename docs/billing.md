@@ -72,6 +72,7 @@ Content-Type: application/json
 **商用行为约定**：
 - 请求必须带 `Content-Type: application/json`，否则 415。
 - `username` 自动去首尾空格；`amount_fen` 必须为非负整数（0~1亿分），负数直接 `reject` 不入账。
+- **计费口径：按月计费，按使用时长折算**。价格表 `price_config`（迁移 `4e5f6a7b8c9d`）存三种资源月单价（分/单位/月），默认 CPU 200 元/核/月、内存 100 元/GB/月、显存 1000 元/GB显存/月，管理员可在控制台修改。自动算价公式：`金额 = (cpu×cpu月价 + memory×memory月价 + gpu_memory×gpu显存月价) × 使用小时 ÷ 720`；外部推送账单金额以推送值为准（平台只记账）。
 - **重复推送金额变化会结算差额**：金额变大补扣（`consume` 流水，备注"费用修正补扣"），金额变小退回（新增 `refund` 流水类型，备注"费用修正退回"），不会重复扣全额。
 - 扣费/充值时对钱包行加锁（`SELECT ... FOR UPDATE`），并发推送同用户不会竞态漏扣；同 pod 并发推送按幂等处理。
 
@@ -103,6 +104,8 @@ GET /billing/api/list?username=xxx&pod_name=yyy&start_time=2026-08-01&end_time=2
 | `GET /billing/api/admin/export` | 管理员会话 | CSV 导出（`?kind=bills|logs` + 同列表筛选参数，`limit` 默认 10 万可调，带 BOM 供 Excel 识别中文） |
 | `POST /billing/api/admin/bill/<id>/reverse` | 管理员会话 | 撤销手动账单（回退余额+refund 流水，状态置 reversed；外部账单不可撤，由推送修正） |
 | `POST /billing/api/admin/log/<id>/reverse` | 管理员会话 | 冲正流水：recharge 扣回 / transfer_out 双向撤销（转入扣回+转出退回，关联 transfer_in 一并标记） |
+| `GET /billing/api/prices` | 登录用户 | 计费标准（cpu/memory/gpu_memory 月单价），普通用户可见 |
+| `GET/POST /billing/api/admin/prices` | 管理员或 token | 计费标准管理：POST `{"cpu":20000,"memory":10000,"gpu_memory":100000}`（分/单位/月） |
 
 **写操作要求**：`recharge`/`transfer`/`push` 必须带 `Content-Type: application/json`（CSRF 防护，浏览器跨站表单无法伪造）；单笔金额上限 100 万元（`MAX_TRANSFER_FEN`）。
 

@@ -28,6 +28,9 @@
     --shadow-hover: 0 10px 28px rgba(31, 45, 90, .13);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .ico-sm { width: 13px; height: 13px; }
+  .ico-lg { width: 22px; height: 22px; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     background: var(--bg); color: var(--text); font-size: 14px; min-height: 100vh;
@@ -49,9 +52,10 @@
   .hero-inner { max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; }
   .hero-title { display: flex; align-items: center; gap: 14px; }
   .hero-title .logo {
-    width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,.16);
-    display: flex; align-items: center; justify-content: center; font-size: 22px;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.28);
   }
   .hero-title h1 { font-size: 21px; font-weight: 600; letter-spacing: .5px; }
   .hero-title p { font-size: 12px; opacity: .75; margin-top: 3px; }
@@ -84,7 +88,7 @@
   .status-box.overdue { background: var(--warning-bg); color: #b45309; }
   .status-box.blocked { background: var(--danger-bg); color: #b91c1c; }
   .status-box.normal { background: var(--success-bg); color: #15803d; }
-  .status-box .ico { font-size: 18px; }
+  .status-box .ico { width: 18px; height: 18px; }
 
   /* ===== 统计小卡 ===== */
   .section { max-width: 1100px; margin: 18px auto 0; padding: 0 32px; }
@@ -155,10 +159,27 @@
 </head>
 <body>
 
+<!-- 线条图标库（Feather 风格） -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+</svg>
+
 <div class="hero">
   <div class="hero-inner">
     <div class="hero-title">
-      <div class="logo">💳</div>
+      <div class="logo"><svg class="ico ico-lg"><use href="#i-wallet"/></svg></div>
       <div>
         <h1>我的账单</h1>
         <p id="userOrg">任务费用 · 一目了然</p>
@@ -189,17 +210,32 @@
 <!-- 统计小卡 -->
 <div class="section">
   <div class="mini-stats">
-    <div class="mini-card"><div class="mini-label">🧾 账单条数</div><div class="mini-value" id="msBills">–</div></div>
-    <div class="mini-card"><div class="mini-label">⬇ 累计消费</div><div class="mini-value" id="msConsume">–</div></div>
-    <div class="mini-card"><div class="mini-label">⬆ 累计充值</div><div class="mini-value" id="msRecharge">–</div></div>
+    <div class="mini-card"><div class="mini-label"><svg class="ico ico-sm"><use href="#i-file"/></svg> 账单条数</div><div class="mini-value" id="msBills">–</div></div>
+    <div class="mini-card"><div class="mini-label"><svg class="ico ico-sm"><use href="#i-arrow-down"/></svg> 累计消费</div><div class="mini-value" id="msConsume">–</div></div>
+    <div class="mini-card"><div class="mini-label"><svg class="ico ico-sm"><use href="#i-arrow-up"/></svg> 累计充值</div><div class="mini-value" id="msRecharge">–</div></div>
+  </div>
+</div>
+
+<!-- 计费标准（普通用户可见） -->
+<div class="section">
+  <div class="panel" style="margin-bottom:0">
+    <div class="tabs" style="border-bottom:1px solid var(--border)">
+      <div class="tab active" style="cursor:default"><svg class="ico ico-sm"><use href="#i-tag"/></svg> 计费标准 <span class="count-badge">按月 · 按时长折算</span></div>
+    </div>
+    <div class="mini-stats" id="priceRow" style="padding:16px 20px;grid-template-columns:repeat(3,1fr)">
+      <div class="mini-card"><div class="mini-label"><svg class="ico ico-sm"><use href="#i-cpu"/></svg> CPU</div><div class="mini-value" id="pcCpu">–</div><div class="mini-label" style="margin-top:6px;color:var(--text-3)">每核每月</div></div>
+      <div class="mini-card"><div class="mini-label"><svg class="ico ico-sm"><use href="#i-drive"/></svg> 内存</div><div class="mini-value" id="pcMem">–</div><div class="mini-label" style="margin-top:6px;color:var(--text-3)">每GB每月</div></div>
+      <div class="mini-card"><div class="mini-label"><svg class="ico ico-sm"><use href="#i-monitor"/></svg> 显存</div><div class="mini-value" id="pcGpu">–</div><div class="mini-label" style="margin-top:6px;color:var(--text-3)">每GB显存每月</div></div>
+    </div>
+    <div style="padding:0 20px 14px;font-size:12px;color:var(--text-3)">任务费用 =（CPU核数 × CPU月单价 + 内存GB × 内存月单价 + 显存GB × 显存月单价）× 使用时长 ÷ 720 小时</div>
   </div>
 </div>
 
 <!-- 明细/流水 -->
 <div class="panel">
   <div class="tabs">
-    <div class="tab active" data-tab="bill" onclick="switchTab('bill')">🧾 费用明细 <span class="count-badge" id="badgeBill">0</span></div>
-    <div class="tab" data-tab="log" onclick="switchTab('log')">📒 资金流水 <span class="count-badge" id="badgeLog">0</span></div>
+    <div class="tab active" data-tab="bill" onclick="switchTab('bill')"><svg class="ico ico-sm"><use href="#i-file"/></svg>费用明细 <span class="count-badge" id="badgeBill">0</span></div>
+    <div class="tab" data-tab="log" onclick="switchTab('log')"><svg class="ico ico-sm"><use href="#i-list"/></svg>资金流水 <span class="count-badge" id="badgeLog">0</span></div>
   </div>
 
   <div id="panel-bill">
@@ -231,7 +267,7 @@ function yuan(fen) { return (fen / 100).toFixed(2); }
 function toast(msg, type) {
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;top:20px;right:20px;background:#fff;border-radius:10px;padding:12px 18px;box-shadow:0 12px 32px rgba(15,23,42,.16);font-size:14px;z-index:999;border-left:4px solid ' + (type === 'error' ? '#ef4444' : '#4f6ef7');
-  el.textContent = (type === 'error' ? '❌ ' : 'ℹ️ ') + msg;
+  el.textContent = ((type === 'error' ? '<svg class="ico" style="vertical-align:-3px"><use href="#i-alert"/></svg> ' : '<svg class="ico" style="vertical-align:-3px"><use href="#i-info"/></svg> ')) + msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 3000);
 }
@@ -275,11 +311,11 @@ async function loadBalance() {
     // 状态条
     const bar = $('statusBar');
     if (b.status === 'blocked') {
-      bar.innerHTML = '<div class="status-box blocked"><span class="ico">🚫</span>欠费已超限：余额 ' + yuan(b.balance_fen) + ' 元，低于下限 ' + b.min_balance_yuan + ' 元，<b>无法发起新的任务</b>，请联系管理员充值。</div>';
+      bar.innerHTML = '<div class="status-box blocked"><svg class="ico"><use href="#i-x"/></svg>欠费已超限：余额 ' + yuan(b.balance_fen) + ' 元，低于下限 ' + b.min_balance_yuan + ' 元，<b>无法发起新的任务</b>，请联系管理员充值。</div>';
     } else if (b.status === 'overdue') {
-      bar.innerHTML = '<div class="status-box overdue"><span class="ico">⚠️</span>当前欠费 ' + yuan(-b.balance_fen) + ' 元（先跑后扣），余额低于下限时将暂停任务发起。</div>';
+      bar.innerHTML = '<div class="status-box overdue"><svg class="ico"><use href="#i-alert"/></svg>当前欠费 ' + yuan(-b.balance_fen) + ' 元（先跑后扣），余额低于下限时将暂停任务发起。</div>';
     } else {
-      bar.innerHTML = '<div class="status-box normal"><span class="ico">✅</span>账户状态正常，任务费用将实时扣减余额。</div>';
+      bar.innerHTML = '<div class="status-box normal"><svg class="ico"><use href="#i-check"/></svg>账户状态正常，任务费用将实时扣减余额。</div>';
     }
   } catch (e) {
     $('balanceValue').textContent = '加载失败';
@@ -339,7 +375,21 @@ function switchTab(tab) {
   ['bill', 'log'].forEach(t => { $('panel-' + t).style.display = t === tab ? '' : 'none'; });
 }
 
+async function loadPrices() {
+  try {
+    const r = await api('/billing/api/prices');
+    const p = {};
+    (r.prices || []).forEach(x => { p[x.resource_type] = x; });
+    if (p.cpu) $('pcCpu').innerHTML = p.cpu.price_yuan + ' <small>元</small>';
+    if (p.memory) $('pcMem').innerHTML = p.memory.price_yuan + ' <small>元</small>';
+    if (p.gpu_memory) $('pcGpu').innerHTML = p.gpu_memory.price_yuan + ' <small>元</small>';
+  } catch (e) {
+    ['pcCpu', 'pcMem', 'pcGpu'].forEach(id => { $(id).textContent = '–'; });
+  }
+}
+
 loadBalance();
+loadPrices();
 loadBills();
 loadLogs();
 </script>

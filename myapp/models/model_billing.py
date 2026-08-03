@@ -64,6 +64,24 @@ class Wallet(Model, MyappModelBase):
         return '%s:%s' % (self.user_id, self.balance_fen)
 
 
+# 计费标准（资源单价）：cpu / memory / gpu_memory，单位价格按"每小时"
+class PriceConfig(Model, MyappModelBase):
+    __tablename__ = 'price_config'
+    id = Column(Integer, primary_key=True)
+    resource_type = Column(String(50), nullable=False, unique=True)   # cpu / memory / gpu_memory
+    price_fen = Column(Integer, default=0)                            # 每单位每小时价格（分）
+    unit = Column(String(50), default='')                             # 单位描述，如 元/核/小时
+    updated_by = Column(String(100), default='')                      # 最后修改人
+    updated_on = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    @property
+    def price_yuan(self):
+        return round(self.price_fen / 100.0, 4) if self.price_fen else 0
+
+    def __repr__(self):
+        return '%s:%s' % (self.resource_type, self.price_fen)
+
+
 # 资金流水：充值/消费/转账全部走流水，双向审计
 class AccountLog(Model, MyappModelBase):
     __tablename__ = 'account_log'

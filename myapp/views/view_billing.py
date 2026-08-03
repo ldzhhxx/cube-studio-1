@@ -21,7 +21,7 @@ from flask import request, g, flash, redirect, jsonify, send_from_directory, Res
 from sqlalchemy.exc import IntegrityError
 
 from myapp import app, appbuilder, db, conf
-from myapp.models.model_billing import Bill, Wallet, AccountLog
+from myapp.models.model_billing import Bill, Wallet, AccountLog, PriceConfig
 from myapp.security import MyUser
 
 logging = app.logger
@@ -419,12 +419,18 @@ def billing_transfer():
 
 
 def _do_deduct(item):
-    """单笔手动扣费：写入 bill 账本 + 扣钱包 + consume 流水，返回结果 dict"""
+    """单笔手动扣费：写入 bill 账本（含资源数）+ 扣钱包 + consume 流水，返回结果 dict"""
     username = str(item.get('username', '') or '').strip()
     amount_fen = safe_int(item.get('amount_fen'))
     remark = str(item.get('remark', '') or '')[:500]
     task_name = str(item.get('task_name', '') or '')[:200]
     pod_name = str(item.get('pod_name', '') or '').strip()
+    # 资源数（自动算价用，随账单记录）
+    cpu = safe_float(item.get('cpu'))
+    memory = safe_float(item.get('memory'))
+    gpu_num = safe_float(item.get('gpu_num'))
+    gpu_memory = safe_float(item.get('gpu_memory'))
+    duration_seconds = safe_int(item.get('duration_seconds'))
     if not username or amount_fen <= 0:
         raise ValueError('username and positive amount_fen required')
     if amount_fen > MAX_TRANSFER_FEN:
@@ -432,14 +438,16 @@ def _do_deduct(item):
     user = get_user_by_username(username)
     if not user:
         raise ValueError('user %s not found' % username)
-    # pod_name 不传则自动生成（bill 账本要求 pod_name 唯一）
+    # pod_name 不传则自动生成（bill 账本要求 pod_name 唯一，手动扣费建议填写真实任务 pod）
     if not pod_name:
         pod_name = 'manual-%s-%s' % (user.username, datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')[:17])
     exist = db.session.query(Bill).filter_by(pod_name=pod_name).first()
     if exist:
         raise ValueError('pod_name %s already exists, use another pod_name' % pod_name)
     bill = Bill(pod_name=pod_name, username=user.username, user_id=user.id, org=user.org,
-                task_name=task_name, amount_fen=amount_fen, status='settled', source='manual')
+                task_name=task_name, amount_fen=amount_fen, status='settled', source='manual',
+                cpu=cpu, memory=memory, gpu_num=gpu_num, gpu_memory=gpu_memory,
+                duration_seconds=duration_seconds)
     db.session.add(bill)
     db.session.flush()
     wallet = lock_wallet(user.id)
@@ -451,7 +459,11 @@ def _do_deduct(item):
         bill_id=bill.id, operator=current_operator(), remark=remark or '管理员手动扣费',
     ))
     db.session.commit()
-    return {'username': username, 'amount_fen': amount_fen, 'balance_fen': wallet.balance_fen, 'result': 'settled'}
+    return {
+        'username': username, 'amount_fen': amount_fen, 'balance_fen': wallet.balance_fen,
+        'cpu': cpu, 'memory': memory, 'gpu_num': gpu_num, 'gpu_memory': gpu_memory,
+        'duration_seconds': duration_seconds, 'result': 'settled',
+    }
 
 
 @app.route('/billing/api/deduct', methods=['POST'])
@@ -552,6 +564,59 @@ def billing_my_logs():
         'created_on': log.created_on.strftime('%Y-%m-%d %H:%M:%S') if log.created_on else '',
     } for log in logs]
     return ok_response({'count': total, 'page': page, 'page_size': page_size, 'logs': result})
+
+
+# ============================================================
+# 计费标准（资源单价）：登录用户可见，管理员可修改
+# ============================================================
+def _price_dict(p):
+    return {
+        'resource_type': p.resource_type,
+        'price_fen': p.price_fen or 0,
+        'price_yuan': round((p.price_fen or 0) / 100.0, 4),
+        'unit': p.unit or '',
+        'updated_by': p.updated_by or '',
+        'updated_on': p.updated_on.strftime('%Y-%m-%d %H:%M:%S') if p.updated_on else '',
+    }
+
+
+@app.route('/billing/api/prices', methods=['GET'])
+def billing_prices():
+    """计费标准查询（所有登录用户可见，普通用户在我的账单页查看）"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
+    return ok_response({'prices': [_price_dict(p) for p in prices]})
+
+
+@app.route('/billing/api/admin/prices', methods=['GET', 'POST'])
+def billing_admin_prices():
+    """计费标准管理：GET 查询；POST 管理员修改价格（分/单位/小时）"""
+    if not check_admin_or_token():
+        return err_response('no permission', 401)
+    if request.method == 'GET':
+        prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
+        return ok_response({'prices': [_price_dict(p) for p in prices]})
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    updated = []
+    for rtype in ('cpu', 'memory', 'gpu_memory'):
+        if rtype not in data:
+            continue
+        price = safe_int(data.get(rtype))
+        if price < 0 or price > MAX_TRANSFER_FEN:
+            return err_response('%s price invalid (0~%s)' % (rtype, MAX_TRANSFER_FEN))
+        p = db.session.query(PriceConfig).filter_by(resource_type=rtype).first()
+        if not p:
+            p = PriceConfig(resource_type=rtype, unit='元/单位/小时')
+            db.session.add(p)
+        p.price_fen = price
+        p.updated_by = current_operator()
+        updated.append(rtype)
+    db.session.commit()
+    prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
+    return ok_response({'updated': updated, 'prices': [_price_dict(p) for p in prices]})
 
 
 # ============================================================
