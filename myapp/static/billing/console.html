@@ -462,7 +462,7 @@
   <div class="price-panel">
     <div class="price-head">
       <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-tag"/></svg> 计费标准</b>
-      <button class="btn btn-ghost btn-sm" id="priceToggleBtn" onclick="togglePricePanel()" title="收起/展开计费标准">收起 ▾</button>
+      <button class="btn btn-ghost btn-sm" id="priceToggleBtn" onclick="togglePricePanel()" title="收起/展开计费标准">展开 ▴</button>
       <span class="muted" id="priceMeta">资源月单价 · 按使用时长折算（每月 720 小时）</span>
       <span class="actions" id="priceActions">
         <button class="btn btn-ghost btn-sm" id="priceEditBtn" onclick="togglePriceEdit()">修改价格</button>
@@ -470,7 +470,7 @@
         <button class="btn btn-ghost btn-sm" id="priceCancelBtn" style="display:none" onclick="togglePriceEdit()">取消</button>
       </span>
     </div>
-    <div id="priceBodyWrap">
+    <div id="priceBodyWrap" style="display:none">
       <div class="price-grid" id="priceGrid"></div>
       <div class="price-edit-note" id="priceNote">手动扣费时输入资源数（GPU 按型号与卡数）与时长，将按"月单价 × 资源数 × 使用时长 ÷ 720"自动计算总价；外部推送账单的金额以推送值为准。</div>
     </div>
@@ -1559,6 +1559,11 @@ function togglePriceEdit() {
   $('priceEditBtn').style.display = priceEditing ? 'none' : '';
   $('priceSaveBtn').style.display = priceEditing ? '' : 'none';
   $('priceCancelBtn').style.display = priceEditing ? '' : 'none';
+  // 面板收起时点"修改价格"自动展开（保证编辑表单可见）
+  if (priceEditing && $('priceBodyWrap').style.display === 'none') {
+    $('priceBodyWrap').style.display = '';
+    $('priceToggleBtn').textContent = '收起 ▾';
+  }
   loadPrices();
 }
 async function addNewItem() {
