@@ -659,7 +659,7 @@ X-Billing-Token: &lt;你的token&gt;
       </div>
 
       <div class="api-block">
-        <h4><span class="badge-m">POST</span> 手动扣费（管理员页面同款接口，支持单个对象或数组批量）</h4>
+        <h4><span class="badge-m">POST</span> 手动扣费（与页面同款：resources 后端自动算价，支持单个对象或数组批量）</h4>
         <div class="api-code">POST /billing/api/deduct
 Content-Type: application/json
 X-Billing-Token: &lt;你的token&gt;   <span class="cmt"># 或管理员会话</span>
@@ -667,14 +667,16 @@ X-Billing-Token: &lt;你的token&gt;   <span class="cmt"># 或管理员会话</s
 [ <span class="cmt"># 单条可传对象 {"username": ...}</span>
   {
     "username": "zhangsan",
-    "cpu": 4, "memory": 16, "gpu_memory": 16,   <span class="cmt"># 资源数（自动算价用）</span>
-    "duration_seconds": 7200,
-    "amount_fen": 2468,              <span class="cmt"># 金额（分）</span>
+    "resources": [                  <span class="cmt"># 资源明细，金额由后端按计费标准自动计算</span>
+      { "item_key": "cpu", "quantity": 4 },        <span class="cmt"># 数量型：CPU 4 核</span>
+      { "item_key": "GPU_l20", "quantity": 100 }   <span class="cmt"># 子型号：L20 用 100G（item_key 在 /billing/api/prices 的 children 中）</span>
+    ],
+    "duration_seconds": 7200,       <span class="cmt"># 时长（秒），按月价折算</span>
     "task_name": "手动扣费任务",
     "remark": "扣费原因"
   }
 ]</div>
-        <div class="api-tip">pod_name 不传自动生成 manual-用户名-时间戳；传了则必须唯一。逐笔容错，返回 {count, ok, failed, results[]}。</div>
+        <div class="api-tip">金额由后端按计费标准权威计算（前端传不了假金额）；pod_name 不传自动生成 manual-用户名-时间戳；逐笔容错，返回 {count, ok, failed, results[]}。旧格式（cpu/memory/gpu_num/gpu_type 字段）仍兼容，自动转换为 resources。</div>
       </div>
 
       <div class="api-block">
@@ -684,9 +686,11 @@ X-Billing-Token: &lt;你的token&gt;</div>
       </div>
 
       <div class="api-block">
-        <h4><span class="badge-m">GET</span> 计费标准（登录用户可查，管理员可改）</h4>
-        <div class="api-code">GET /billing/api/prices                  <span class="cmt"># 所有登录用户</span>
-POST /billing/api/admin/prices      <span class="cmt"># 管理员修改 {"cpu":20000,"memory":10000,"gpu_memory":100000} 单位：分/单位/月</span></div>
+        <h4><span class="badge-m">GET/POST</span> 计费标准（登录用户可查，管理员可改）</h4>
+        <div class="api-code">GET /billing/api/prices                  <span class="cmt"># 所有登录用户，返回 items（含 children 子型号）</span>
+POST /billing/api/admin/items      <span class="cmt"># 管理员创建计费项 {"item_key":"storage","item_name":"存储","item_type":"quantity","unit":"元/GB/月","price_fen":50}</span>
+POST /billing/api/admin/items/price <span class="cmt"># 改价 {"item_key":"GPU_l20","price_fen":7000}</span>
+POST /billing/api/calc              <span class="cmt"># 算价预览 {"resources":[{"item_key":"GPU_l20","quantity":100}],"duration_seconds":3600}</span></div>
       </div>
     </div>
   </div>
