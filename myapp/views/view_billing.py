@@ -21,7 +21,7 @@ from flask import request, g, flash, redirect, jsonify, send_from_directory, Res
 from sqlalchemy.exc import IntegrityError
 
 from myapp import app, appbuilder, db, conf
-from myapp.models.model_billing import Bill, Wallet, AccountLog, PriceConfig, GpuPrice
+from myapp.models.model_billing import Bill, Wallet, AccountLog, PriceConfig, ItemPriceDetail, BillItem
 from myapp.security import MyUser
 
 logging = app.logger
@@ -421,26 +421,53 @@ def billing_transfer():
 
 
 def _do_deduct(item):
-    """单笔手动扣费：写入 bill 账本（含资源数）+ 扣钱包 + consume 流水，返回结果 dict"""
+    """单笔手动扣费：resources 后端自动算价 → bill 账本 + bill_item 明细快照 + 扣钱包 + consume 流水
+    兼容旧调用：无 resources 时沿用 amount_fen（旧字段 cpu/memory/gpu_num/gpu_type 自动转换）"""
     username = str(item.get('username', '') or '').strip()
-    amount_fen = safe_int(item.get('amount_fen'))
     remark = str(item.get('remark', '') or '')[:500]
     task_name = str(item.get('task_name', '') or '')[:200]
     pod_name = str(item.get('pod_name', '') or '').strip()
-    # 资源数（自动算价用，随账单记录）
-    cpu = safe_float(item.get('cpu'))
-    memory = safe_float(item.get('memory'))
-    gpu_num = safe_float(item.get('gpu_num'))
-    gpu_type = str(item.get('gpu_type', '') or '').strip()[:50]
-    gpu_memory = safe_float(item.get('gpu_memory'))
     duration_seconds = safe_int(item.get('duration_seconds'))
-    if not username or amount_fen <= 0:
-        raise ValueError('username and positive amount_fen required')
+    resources = item.get('resources')
+    # 旧字段兼容：cpu/memory/gpu_num/gpu_type → resources
+    if not resources and (item.get('cpu') or item.get('memory') or item.get('gpu_num')):
+        resources = []
+        if safe_float(item.get('cpu')) > 0:
+            resources.append({'item_key': 'cpu', 'quantity': safe_float(item.get('cpu'))})
+        if safe_float(item.get('memory')) > 0:
+            resources.append({'item_key': 'memory', 'quantity': safe_float(item.get('memory'))})
+        if safe_float(item.get('gpu_num')) > 0:
+            resources.append({'item_key': 'gpu', 'option_key': str(item.get('gpu_type', '') or '').strip(),
+                              'quantity': safe_float(item.get('gpu_num'))})
+    # 算价：resources 存在则后端权威计算；否则沿用 amount_fen（外部指定）
+    calc_items = []
+    if resources:
+        try:
+            calc_items, amount_fen = calc_resources(resources, duration_seconds)
+        except ValueError as e:
+            raise ValueError(str(e))
+        if amount_fen <= 0:
+            raise ValueError('resources 算价为 0，请检查资源数与计费项配置')
+    else:
+        amount_fen = safe_int(item.get('amount_fen'))
+        if amount_fen <= 0:
+            raise ValueError('username and positive amount_fen required')
     if amount_fen > MAX_TRANSFER_FEN:
         raise ValueError('amount_fen exceeds limit %s' % MAX_TRANSFER_FEN)
     user = get_user_by_username(username)
     if not user:
         raise ValueError('user %s not found' % username)
+    # 基础列回填（展示用）：从算价明细映射 cpu/memory/gpu
+    cpu = memory = gpu_num = gpu_memory = 0.0
+    gpu_type = ''
+    for ci in calc_items:
+        if ci['item_key'] == 'cpu':
+            cpu = ci['quantity']
+        elif ci['item_key'] == 'memory':
+            memory = ci['quantity']
+        elif ci['item_key'] == 'gpu':
+            gpu_num = ci['quantity']
+            gpu_type = ci['option_key']
     # pod_name 不传则自动生成（bill 账本要求 pod_name 唯一，手动扣费建议填写真实任务 pod）
     if not pod_name:
         pod_name = 'manual-%s-%s' % (user.username, datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')[:17])
@@ -453,6 +480,13 @@ def _do_deduct(item):
                 duration_seconds=duration_seconds)
     db.session.add(bill)
     db.session.flush()
+    # 明细快照（历史价格不可变）
+    for ci in calc_items:
+        db.session.add(BillItem(
+            bill_id=bill.id, item_key=ci['item_key'], item_name=ci['item_name'],
+            option_key=ci['option_key'], quantity=ci['quantity'],
+            unit_price_fen=ci['unit_price_fen'], amount_fen=ci['amount_fen'],
+        ))
     wallet = lock_wallet(user.id)
     before = wallet.balance_fen
     wallet.balance_fen -= amount_fen
@@ -465,7 +499,7 @@ def _do_deduct(item):
     return {
         'username': username, 'amount_fen': amount_fen, 'balance_fen': wallet.balance_fen,
         'cpu': cpu, 'memory': memory, 'gpu_num': gpu_num, 'gpu_type': gpu_type, 'gpu_memory': gpu_memory,
-        'duration_seconds': duration_seconds, 'result': 'settled',
+        'duration_seconds': duration_seconds, 'items': calc_items, 'result': 'settled',
     }
 
 
@@ -570,102 +604,205 @@ def billing_my_logs():
 
 
 # ============================================================
-# 计费标准（资源单价）：登录用户可见，管理员可修改
+# 动态计费项（数据驱动）：数量型 quantity / 型号型 model
+# 后期新增计费项（存储/服务运维等）前端添加配置即可，无需改代码
 # ============================================================
-def _price_dict(p):
+def _item_dict(p):
+    options = db.session.query(ItemPriceDetail).filter_by(item_id=p.id).order_by(ItemPriceDetail.price_fen.desc()).all()
     return {
-        'resource_type': p.resource_type,
+        'item_key': p.item_key,
+        'item_name': p.item_name or p.item_key,
+        'item_type': p.item_type or 'quantity',
         'price_fen': p.price_fen or 0,
         'price_yuan': round((p.price_fen or 0) / 100.0, 4),
         'unit': p.unit or '',
+        'sort_order': p.sort_order or 0,
+        'enabled': p.enabled if p.enabled is not None else 1,
         'updated_by': p.updated_by or '',
         'updated_on': p.updated_on.strftime('%Y-%m-%d %H:%M:%S') if p.updated_on else '',
-    }
-
-
-def _gpu_dict(p):
-    return {
-        'gpu_type': p.gpu_type,
-        'price_fen': p.price_fen or 0,
-        'price_yuan': round((p.price_fen or 0) / 100.0, 4),
-        'unit': p.unit or '元/卡/月',
-        'updated_by': p.updated_by or '',
-        'updated_on': p.updated_on.strftime('%Y-%m-%d %H:%M:%S') if p.updated_on else '',
+        'options': [{
+            'option_key': d.option_key,
+            'option_name': d.option_name or d.option_key,
+            'price_fen': d.price_fen or 0,
+            'price_yuan': round((d.price_fen or 0) / 100.0, 4),
+            'updated_by': d.updated_by or '',
+        } for d in options],
     }
 
 
 def _all_prices():
-    prices = db.session.query(PriceConfig).order_by(PriceConfig.id.asc()).all()
-    gpus = db.session.query(GpuPrice).order_by(GpuPrice.price_fen.desc()).all()
-    return {'prices': [_price_dict(p) for p in prices], 'gpu': [_gpu_dict(p) for p in gpus]}
+    items = db.session.query(PriceConfig).order_by(PriceConfig.sort_order.asc(), PriceConfig.id.asc()).all()
+    return {'items': [_item_dict(p) for p in items]}
 
 
 @app.route('/billing/api/prices', methods=['GET'])
 def billing_prices():
-    """计费标准查询（所有登录用户可见，普通用户在我的账单页查看）"""
+    """计费项查询（所有登录用户可见，普通用户在我的账单页查看）"""
     if not g.user or not g.user.is_authenticated:
         return err_response('please login', 401)
     return ok_response(_all_prices())
 
 
-@app.route('/billing/api/admin/prices', methods=['GET', 'POST'])
-def billing_admin_prices():
-    """计费标准管理：GET 查询；POST 管理员修改 CPU/内存价格（分/单位/月）"""
-    if not check_admin_or_token():
-        return err_response('no permission', 401)
-    if request.method == 'GET':
-        return ok_response(_all_prices())
-    if not require_json_content():
-        return err_response('Content-Type must be application/json', 415)
-    data = request.get_json(force=True, silent=True) or {}
-    updated = []
-    for rtype in ('cpu', 'memory'):
-        if rtype not in data:
-            continue
-        price = safe_int(data.get(rtype))
-        if price < 0 or price > MAX_TRANSFER_FEN:
-            return err_response('%s price invalid (0~%s)' % (rtype, MAX_TRANSFER_FEN))
-        p = db.session.query(PriceConfig).filter_by(resource_type=rtype).first()
-        if not p:
-            p = PriceConfig(resource_type=rtype, unit='元/单位/月')
-            db.session.add(p)
-        p.price_fen = price
-        p.updated_by = current_operator()
-        updated.append(rtype)
-    db.session.commit()
-    return ok_response({'updated': updated, **_all_prices()})
-
-
-@app.route('/billing/api/admin/gpu_prices', methods=['POST', 'DELETE'])
-def billing_admin_gpu_prices():
-    """GPU 型号价格管理：POST 新增/修改 {gpu_type, price_fen}；DELETE ?gpu_type= 删除型号"""
+@app.route('/billing/api/admin/items', methods=['POST', 'DELETE'])
+def billing_admin_items():
+    """计费项管理：POST 创建 {item_key, item_name, item_type, unit, price_fen, sort_order}；DELETE ?item_key= 删除"""
     if not check_admin_or_token():
         return err_response('no permission', 401)
     if not require_json_content():
         return err_response('Content-Type must be application/json', 415)
     if request.method == 'DELETE':
-        gpu_type = (request.args.get('gpu_type', '') or '').strip()
-        p = db.session.query(GpuPrice).filter_by(gpu_type=gpu_type).first()
+        item_key = (request.args.get('item_key', '') or '').strip()
+        p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
         if not p:
-            return err_response('gpu type %s not found' % gpu_type)
+            return err_response('item %s not found' % item_key)
+        db.session.query(ItemPriceDetail).filter_by(item_id=p.id).delete()
         db.session.delete(p)
         db.session.commit()
-        return ok_response({'deleted': gpu_type, **_all_prices()})
+        return ok_response({'deleted': item_key, **_all_prices()})
     data = request.get_json(force=True, silent=True) or {}
-    gpu_type = str(data.get('gpu_type', '') or '').strip()
+    item_key = str(data.get('item_key', '') or '').strip()
+    if not item_key:
+        return err_response('item_key required')
+    if db.session.query(PriceConfig).filter_by(item_key=item_key).first():
+        return err_response('item %s already exists' % item_key)
+    item_type = str(data.get('item_type', 'quantity') or 'quantity').strip()
+    if item_type not in ('quantity', 'model'):
+        return err_response('item_type must be quantity or model')
+    p = PriceConfig(
+        item_key=item_key,
+        item_name=str(data.get('item_name', '') or item_key)[:100],
+        item_type=item_type,
+        price_fen=safe_int(data.get('price_fen')),
+        unit=str(data.get('unit', '') or '')[:50],
+        sort_order=safe_int(data.get('sort_order')),
+        updated_by=current_operator(),
+    )
+    db.session.add(p)
+    db.session.commit()
+    return ok_response({'created': item_key, **_all_prices()})
+
+
+@app.route('/billing/api/admin/items/price', methods=['POST'])
+def billing_admin_item_price():
+    """改价：数量型 {item_key, price_fen}；型号细项 {item_key, option_key, price_fen}"""
+    if not check_admin_or_token():
+        return err_response('no permission', 401)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    item_key = str(data.get('item_key', '') or '').strip()
     price_fen = safe_int(data.get('price_fen'))
-    if not gpu_type:
-        return err_response('gpu_type required')
     if price_fen < 0 or price_fen > MAX_TRANSFER_FEN:
         return err_response('price invalid (0~%s)' % MAX_TRANSFER_FEN)
-    p = db.session.query(GpuPrice).filter_by(gpu_type=gpu_type).first()
+    p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
     if not p:
-        p = GpuPrice(gpu_type=gpu_type, unit='元/卡/月')
-        db.session.add(p)
-    p.price_fen = price_fen
-    p.updated_by = current_operator()
+        return err_response('item %s not found' % item_key)
+    option_key = str(data.get('option_key', '') or '').strip()
+    if option_key:
+        d = db.session.query(ItemPriceDetail).filter_by(item_id=p.id, option_key=option_key).first()
+        if not d:
+            return err_response('option %s not found for %s' % (option_key, item_key))
+        d.price_fen = price_fen
+        d.updated_by = current_operator()
+    else:
+        p.price_fen = price_fen
+        p.updated_by = current_operator()
     db.session.commit()
-    return ok_response({'gpu_type': gpu_type, 'price_fen': price_fen, **_all_prices()})
+    return ok_response({'item_key': item_key, 'option_key': option_key, 'price_fen': price_fen, **_all_prices()})
+
+
+@app.route('/billing/api/admin/items/options', methods=['POST', 'DELETE'])
+def billing_admin_item_options():
+    """型号细项管理：POST 添加 {item_key, option_key, option_name, price_fen}；DELETE ?item_key=&option_key= 删除"""
+    if not check_admin_or_token():
+        return err_response('no permission', 401)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    if request.method == 'DELETE':
+        item_key = (request.args.get('item_key', '') or '').strip()
+        option_key = (request.args.get('option_key', '') or '').strip()
+        p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
+        d = db.session.query(ItemPriceDetail).filter_by(item_id=p.id, option_key=option_key).first() if p else None
+        if not d:
+            return err_response('option not found')
+        db.session.delete(d)
+        db.session.commit()
+        return ok_response({'deleted': option_key, **_all_prices()})
+    data = request.get_json(force=True, silent=True) or {}
+    item_key = str(data.get('item_key', '') or '').strip()
+    option_key = str(data.get('option_key', '') or '').strip()
+    price_fen = safe_int(data.get('price_fen'))
+    if not item_key or not option_key:
+        return err_response('item_key and option_key required')
+    if price_fen < 0 or price_fen > MAX_TRANSFER_FEN:
+        return err_response('price invalid (0~%s)' % MAX_TRANSFER_FEN)
+    p = db.session.query(PriceConfig).filter_by(item_key=item_key).first()
+    if not p:
+        return err_response('item %s not found' % item_key)
+    d = db.session.query(ItemPriceDetail).filter_by(item_id=p.id, option_key=option_key).first()
+    if not d:
+        d = ItemPriceDetail(item_id=p.id, option_key=option_key)
+        db.session.add(d)
+    d.option_name = str(data.get('option_name', '') or option_key)[:100]
+    d.price_fen = price_fen
+    d.updated_by = current_operator()
+    db.session.commit()
+    return ok_response({'item_key': item_key, 'option_key': option_key, 'price_fen': price_fen, **_all_prices()})
+
+
+# ============================================================
+# 算价引擎（后端权威）：resources → 逐项金额 + 总额
+# ============================================================
+def calc_resources(resources, duration_seconds):
+    """resources: [{'item_key','option_key','quantity'}] → (明细列表, 总金额分)
+    按月计费：金额 = Σ(数量 × 单价(分/单位/月)) × 时长秒 / (720*3600)"""
+    items = {p.item_key: p for p in db.session.query(PriceConfig).filter(PriceConfig.enabled == 1).all()}
+    details = {}
+    for d in db.session.query(ItemPriceDetail).all():
+        details.setdefault(d.item_id, {})[d.option_key] = d
+    duration_month = safe_int(duration_seconds) / 720.0 / 3600.0
+    result, total = [], 0
+    for r in resources or []:
+        item = items.get(str(r.get('item_key', '') or '').strip())
+        if not item:
+            raise ValueError('未知计费项: %s' % r.get('item_key'))
+        quantity = safe_float(r.get('quantity'))
+        if quantity <= 0:
+            continue
+        opt = str(r.get('option_key', '') or '').strip()
+        if item.item_type == 'model':
+            detail = details.get(item.id, {}).get(opt)
+            if not detail:
+                raise ValueError('计费项 %s 的型号 %s 未配置价格' % (item.item_key, opt))
+            unit_fen = detail.price_fen or 0
+        else:
+            unit_fen = item.price_fen or 0
+        amount = int(round(quantity * unit_fen * duration_month))
+        total += amount
+        result.append({
+            'item_key': item.item_key,
+            'item_name': item.item_name or item.item_key,
+            'option_key': opt,
+            'quantity': quantity,
+            'unit_price_fen': unit_fen,
+            'amount_fen': amount,
+        })
+    return result, total
+
+
+@app.route('/billing/api/calc', methods=['POST'])
+def billing_calc():
+    """算价预览（登录用户）：后端权威计算，前端实时调用展示"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        items, total = calc_resources(data.get('resources'), safe_int(data.get('duration_seconds')))
+    except ValueError as e:
+        return err_response(str(e))
+    return ok_response({'items': items, 'total_fen': total, 'total_yuan': round(total / 100.0, 2)})
 
 
 # ============================================================
@@ -691,6 +828,10 @@ def _bill_to_dict(b):
         'end_time': b.end_time.strftime('%Y-%m-%d %H:%M:%S') if b.end_time else '',
         'status': b.status,
         'source': b.source or '',
+        'items': [{
+            'item_key': i.item_key, 'item_name': i.item_name, 'option_key': i.option_key,
+            'quantity': i.quantity, 'unit_price_fen': i.unit_price_fen, 'amount_fen': i.amount_fen,
+        } for i in db.session.query(BillItem).filter_by(bill_id=b.id).all()],
         'created_on': b.created_on.strftime('%Y-%m-%d %H:%M:%S') if b.created_on else '',
     }
 

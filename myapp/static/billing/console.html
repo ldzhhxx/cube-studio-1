@@ -124,6 +124,14 @@
   .price-cell .meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
   .price-cell .input { width: 100%; height: 36px; margin-top: 8px; text-align: right; }
   .price-edit-note { font-size: 12px; color: var(--text-3); padding: 10px 20px; border-top: 1px solid #f1f3fa; }
+  .price-cell-model { padding: 14px 16px; }
+  .price-opt-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px dashed #f1f3fa; }
+  .price-opt-row:last-child { border-bottom: none; }
+  .price-opt-name { font-size: 13px; font-weight: 600; min-width: 90px; display: flex; align-items: center; gap: 6px; }
+  .price-opt-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .price-opt-val small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+  .price-opt-unit { font-size: 11.5px; color: var(--text-3); min-width: 62px; text-align: right; }
+  .price-add-form { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   @media (max-width: 900px) { .price-grid { grid-template-columns: 1fr; } .price-cell { border-right: none; border-bottom: 1px solid #f1f3fa; } }
 
   /* ===== API 说明模态框 ===== */
@@ -1224,11 +1232,6 @@ async function doRecharge() {
 }
 
 let dtRowSeq = 0;
-function gpuTypeOptions() {
-  return ['<option value="">GPU型号</option>'].concat(
-    Object.keys(state.gpuPrices || {}).map(t => '<option>' + esc(t) + '</option>')
-  ).join('');
-}
 function addDeductRow() {
   dtRowSeq++;
   const n = dtRowSeq;
@@ -1240,34 +1243,68 @@ function addDeductRow() {
       '<input class="input" id="dtU' + n + '" placeholder="搜索用户…" autocomplete="off">' +
       '<div class="ss-dropdown" id="dtDrop' + n + '"></div>' +
     '</div>' +
-    '<input class="input" id="dtC' + n + '" type="number" min="0" step="0.1" placeholder="CPU核" title="CPU 核数" style="width:86px" oninput="calcDeductRow(' + n + ')">' +
-    '<input class="input" id="dtM' + n + '" type="number" min="0" step="0.1" placeholder="内存GB" title="内存（GB）" style="width:92px" oninput="calcDeductRow(' + n + ')">' +
-    '<select class="select" id="dtTp' + n + '" title="GPU 型号（按型号定价）" style="width:100px;height:36px" onchange="calcDeductRow(' + n + ')">' + gpuTypeOptions() + '</select>' +
-    '<input class="input" id="dtG' + n + '" type="number" min="0" step="1" placeholder="卡数" title="GPU 卡数" style="width:74px" oninput="calcDeductRow(' + n + ')">' +
+    resourceInputs(n) +
     '<input class="input" id="dtH' + n + '" type="number" min="0" step="0.5" placeholder="时长h" title="运行时长（小时）" style="width:82px" oninput="calcDeductRow(' + n + ')">' +
-    '<span class="mono" id="dtCalc' + n + '" style="min-width:92px;text-align:right;font-size:13px;color:var(--primary);font-weight:600">0.00元</span>' +
-    '<input class="input" id="dtT' + n + '" placeholder="任务名" style="width:120px">' +
+    '<span class="mono" id="dtCalc' + n + '" style="min-width:88px;text-align:right;font-size:13px;color:var(--primary);font-weight:600">0.00元</span>' +
+    '<input class="input" id="dtT' + n + '" placeholder="任务名" style="width:110px">' +
     '<button class="btn btn-ghost btn-sm" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
   $('dtRows').appendChild(row);
   initSearchSelect('dtU' + n, 'dtDrop' + n);
 }
 
-// 按计费标准自动算价（按月计费，按使用时长折算：月价 × 资源数 × 使用小时 / 720）
-// GPU 按型号定价：型号月单价 × 卡数
-const MONTH_HOURS = 720;  // 一个月按 720 小时折算
+// 按计费项配置动态生成资源输入：数量型=数字框；型号型=型号下拉+数量框
+function resourceInputs(n) {
+  let html = '';
+  (state.items || []).forEach(it => {
+    if (it.item_type === 'model') {
+      const opts = ['<option value="">' + esc(it.item_name) + '型号</option>']
+        .concat((it.options || []).map(o => '<option value="' + esc(o.option_key) + '">' + esc(o.option_name) + '</option>')).join('');
+      html += '<select class="select" id="dtO' + n + '_' + esc(it.item_key) + '" title="' + esc(it.item_name) + '型号（按型号定价）" style="width:100px;height:36px" onchange="calcDeductRow(' + n + ')">' + opts + '</select>' +
+              '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="1" placeholder="' + esc(it.item_name) + '数" title="' + esc(it.item_name) + '数量" style="width:74px" oninput="calcDeductRow(' + n + ')">';
+    } else {
+      html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="' + esc(it.item_name) + '" title="' + esc(it.item_name) + ' ' + esc(it.unit) + '" style="width:92px" oninput="calcDeductRow(' + n + ')">';
+    }
+  });
+  return html;
+}
+
+// 收集一行的资源明细
+function collectRowResources(n) {
+  const res = [];
+  (state.items || []).forEach(it => {
+    const qEl = $('dtQ' + n + '_' + it.item_key);
+    if (!qEl) return;
+    const q = parseFloat(qEl.value) || 0;
+    if (q <= 0) return;
+    if (it.item_type === 'model') {
+      const oEl = $('dtO' + n + '_' + it.item_key);
+      const opt = oEl ? oEl.value : '';
+      if (!opt) return;
+      res.push({ item_key: it.item_key, option_key: opt, quantity: q });
+    } else {
+      res.push({ item_key: it.item_key, quantity: q });
+    }
+  });
+  return res;
+}
+
+// 实时算价（后端权威 /billing/api/calc，防抖）
+const calcTimers = {};
 function calcDeductRow(n) {
-  const cpu = parseFloat($('dtC' + n).value) || 0;
-  const mem = parseFloat($('dtM' + n).value) || 0;
-  const gpuType = $('dtTp' + n).value;
-  const gpuNum = parseFloat($('dtG' + n).value) || 0;
-  const hours = parseFloat($('dtH' + n).value) || 0;
-  const p = state.prices || {};
-  const gpuFen = (state.gpuPrices || {})[gpuType] || 0;
-  const monthFen = cpu * (p.cpu || 0) + mem * (p.memory || 0) + gpuNum * gpuFen;
-  const totalFen = Math.round(monthFen * hours / MONTH_HOURS);
-  $('dtCalc' + n).textContent = (totalFen / 100).toFixed(2) + '元';
-  $('dtCalc' + n).title = '按月计费折算：' + (monthFen / 100).toFixed(2) + ' 元/月 × ' + hours + ' 小时 ÷ 720';
-  return totalFen;
+  clearTimeout(calcTimers[n]);
+  calcTimers[n] = setTimeout(() => doCalcRow(n), 400);
+}
+async function doCalcRow(n) {
+  const resources = collectRowResources(n);
+  const hours = parseFloat(($('dtH' + n) || {}).value) || 0;
+  const el = $('dtCalc' + n);
+  if (!resources.length || !hours) { el.textContent = '0.00元'; el.title = ''; return; }
+  try {
+    const r = await api('/billing/api/calc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resources, duration_seconds: Math.round(hours * 3600) }) });
+    el.textContent = r.total_yuan.toFixed(2) + '元';
+    el.title = (r.items || []).map(i => (i.option_key || i.item_name) + '×' + i.quantity + '=' + (i.amount_fen / 100).toFixed(2) + '元').join('；');
+  } catch (e) { el.textContent = '—'; el.title = e.message; }
 }
 
 async function doDeduct() {
@@ -1276,22 +1313,18 @@ async function doDeduct() {
   const items = [];
   for (let i = 1; i <= dtRowSeq; i++) {
     const u = requirePicked('dtU' + i);
-    const cEl = $('dtC' + i), mEl = $('dtM' + i), gEl = $('dtG' + i), tpEl = $('dtTp' + i), hEl = $('dtH' + i), tEl = $('dtT' + i);
-    if (!cEl) continue;  // 行已被删除
-    const cpu = parseFloat(cEl.value) || 0, mem = parseFloat(mEl.value) || 0;
-    const gpuNum = parseFloat(gEl.value) || 0, hours = parseFloat(hEl.value) || 0;
-    const gpuType = tpEl ? tpEl.value : '';
-    const amountFen = calcDeductRow(i);
-    if (!u && !cpu && !mem && !gpuNum && !hours) continue;  // 跳过全空行
+    const hEl = $('dtH' + i), tEl = $('dtT' + i);
+    if (!hEl) continue;  // 行已被删除
+    const resources = collectRowResources(i);
+    const hours = parseFloat(hEl.value) || 0;
+    if (!u && !resources.length && !hours) continue;  // 跳过全空行
     if (!u) return toast('第 ' + i + ' 行：请从搜索结果中选择用户', 'error');
-    if (gpuNum > 0 && !gpuType) return toast('第 ' + i + ' 行：已填 GPU 卡数，请选择型号', 'error');
-    if (amountFen <= 0) return toast('第 ' + i + ' 行：请填写资源数与时长（当前自动算价为 0 元）', 'error');
-    if (amountFen > MAX_AMOUNT_YUAN * 100) return toast('第 ' + i + ' 行：金额不能超过 ' + MAX_AMOUNT_YUAN + ' 元', 'error');
+    if (!resources.length) return toast('第 ' + i + ' 行：请填写至少一项资源数量', 'error');
+    if (!hours) return toast('第 ' + i + ' 行：请填写运行时长', 'error');
     items.push({
       username: u,
-      cpu: cpu, memory: mem, gpu_num: gpuNum, gpu_type: gpuType,
+      resources,
       duration_seconds: Math.round(hours * 3600),
-      amount_fen: amountFen,
       task_name: (tEl ? tEl.value : '').trim(),
       remark,
     });
@@ -1341,53 +1374,69 @@ async function doTransfer() {
   btn.disabled = false; btn.textContent = '确认转账';
 }
 
-// ================= 计费标准（管理员可编辑，GPU 按型号定价） =================
-const PRICE_META = {
-  cpu: { name: 'CPU', ico: 'cpu', color: '#eef1fe', colorTxt: '#4f6ef7' },
-  memory: { name: '内存', ico: 'drive', color: '#e8f9ef', colorTxt: '#22c55e' },
+// ================= 计费标准（动态计费项：数量型/型号型，前端可增删改） =================
+const ITEM_META = {
+  cpu: { ico: 'cpu', color: '#eef1fe', colorTxt: '#4f6ef7' },
+  memory: { ico: 'drive', color: '#e8f9ef', colorTxt: '#22c55e' },
+  gpu: { ico: 'monitor', color: '#fef4e2', colorTxt: '#f59e0b' },
 };
 let priceEditing = false;
 
 async function loadPrices() {
   try {
     const r = await api('/billing/api/prices');
-    state.prices = {};
-    state.gpuPrices = {};
-    (r.prices || []).forEach(p => { state.prices[p.resource_type] = p.price_fen; });
-    (r.gpu || []).forEach(p => { state.gpuPrices[p.gpu_type] = p.price_fen; });
-    // CPU / 内存两格
-    const cpuMem = (r.prices || []).filter(p => PRICE_META[p.resource_type]).map(p => {
-      const meta = PRICE_META[p.resource_type];
+    state.items = r.items || [];
+    const cells = state.items.map(it => {
+      const meta = ITEM_META[it.item_key] || { ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
+      if (it.item_type === 'model') {
+        const opts = (it.options || []).map(o => {
+          const valCell = priceEditing
+            ? '<input class="input" id="optIn_' + esc(it.item_key) + '_' + esc(o.option_key) + '" type="number" min="0" step="0.01" value="' + o.price_yuan + '" style="width:96px;height:30px;font-size:12.5px;margin:0">'
+            : o.price_yuan + '<small>元</small>';
+          const del = priceEditing
+            ? '<button class="btn btn-ghost btn-sm" onclick="deleteOption(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\',\'' + esc(o.option_key).replace(/'/g, "\\'") + '\')">✕</button>'
+            : '';
+          return '<div class="price-opt-row">' +
+            '<div class="price-opt-name">' + esc(o.option_name) + del + '</div>' +
+            '<div class="price-opt-val">' + valCell + '</div>' +
+            '<div class="price-opt-unit">' + esc(it.unit) + '</div></div>';
+        }).join('');
+        const addOpt = priceEditing
+          ? '<div class="price-opt-row" style="background:#fbfcff;border-bottom:none">' +
+              '<input class="input" id="newOpt_' + esc(it.item_key) + '" placeholder="型号如 A10" style="flex:1;height:30px;font-size:12.5px">' +
+              '<input class="input" id="newOptPrice_' + esc(it.item_key) + '" type="number" min="0" step="0.01" placeholder="价格" style="width:80px;height:30px;font-size:12.5px">' +
+            '</div>'
+          : '';
+        return '<div class="price-cell price-cell-model">' +
+          '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + '</div>' +
+          opts + addOpt + '</div>';
+      }
       const valCell = priceEditing
-        ? '<input class="input" id="priceIn_' + p.resource_type + '" type="number" min="0" step="0.01" value="' + p.price_yuan + '">'
-        : p.price_yuan + '<small>元</small>';
-      return '<div class="price-cell">' +
-        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + meta.name + '</div>' +
-        '<div class="val">' + valCell + '</div>' +
-        '<div class="meta">' + esc(p.unit) + (p.updated_by ? ' · 修改人 ' + esc(p.updated_by) : '') + '</div></div>';
-    }).join('');
-    // GPU 型号格（每型号一格）
-    const gpuCells = (r.gpu || []).map(p => {
-      const valCell = priceEditing
-        ? '<input class="input" id="gpuIn_' + esc(p.gpu_type) + '" data-type="' + esc(p.gpu_type) + '" type="number" min="0" step="0.01" value="' + p.price_yuan + '">'
-        : p.price_yuan + '<small>元</small>';
-      const delBtn = priceEditing
-        ? '<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="deleteGpuPrice(\'' + esc(p.gpu_type).replace(/'/g, "\\'") + '\')">删除</button>'
+        ? '<input class="input" id="priceIn_' + esc(it.item_key) + '" type="number" min="0" step="0.01" value="' + it.price_yuan + '">'
+        : it.price_yuan + '<small>元</small>';
+      const del = priceEditing
+        ? '<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="deleteItem(\'' + esc(it.item_key).replace(/'/g, "\\'") + '\')">删除</button>'
         : '';
       return '<div class="price-cell">' +
-        '<div class="res"><span class="res-ico" style="background:#fef4e2;color:#f59e0b"><svg class="ico"><use href="#i-monitor"/></svg></span>' + esc(p.gpu_type) + delBtn + '</div>' +
+        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + del + '</div>' +
         '<div class="val">' + valCell + '</div>' +
-        '<div class="meta">' + esc(p.unit) + (p.updated_by ? ' · 修改人 ' + esc(p.updated_by) : '') + '</div></div>';
+        '<div class="meta">' + esc(it.unit) + (it.updated_by ? ' · 修改人 ' + esc(it.updated_by) : '') + '</div></div>';
     }).join('');
-    // 编辑模式下显示"添加型号"格
     const addCell = priceEditing
       ? '<div class="price-cell" style="background:#fbfcff">' +
-          '<div class="res">＋ 添加 GPU 型号</div>' +
-          '<div style="display:flex;gap:8px;margin-top:8px"><input class="input" id="gpuNewType" placeholder="型号如 A10" style="flex:1"><input class="input" id="gpuNewPrice" type="number" min="0" step="0.01" placeholder="价格(元/月)" style="flex:1"></div>' +
+          '<div class="res">＋ 添加计费项（如：存储 / 服务运维）</div>' +
+          '<div class="price-add-form">' +
+            '<input class="input" id="newItemName" placeholder="名称 如 存储" style="flex:1">' +
+            '<select class="select" id="newItemType" style="width:92px;height:36px"><option value="quantity">数量型</option><option value="model">型号型</option></select>' +
+            '<input class="input" id="newItemKey" placeholder="标识 如 storage" style="flex:1">' +
+            '<input class="input" id="newItemUnit" placeholder="单位 如 元/GB/月" style="flex:1">' +
+            '<input class="input" id="newItemPrice" type="number" min="0" step="0.01" placeholder="单价(元/月)" style="width:110px">' +
+            '<button class="btn btn-primary btn-sm" onclick="addNewItem()">添加</button>' +
+          '</div>' +
         '</div>'
       : '';
-    $('priceGrid').innerHTML = (cpuMem || '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>') + gpuCells + addCell;
-  } catch (e) { $('priceGrid').innerHTML = '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>'; }
+    $('priceGrid').innerHTML = (cells || '<div class="price-cell"><div class="muted">尚未配置计费项，点击「修改价格」添加</div></div>') + addCell;
+  } catch (e) { $('priceGrid').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>'; }
 }
 function togglePriceEdit() {
   priceEditing = !priceEditing;
@@ -1396,40 +1445,65 @@ function togglePriceEdit() {
   $('priceCancelBtn').style.display = priceEditing ? '' : 'none';
   loadPrices();
 }
-async function deleteGpuPrice(gpuType) {
-  confirmAction('删除 GPU 型号 ' + gpuType, '删除后该型号将无法用于自动算价（历史账单不受影响）。', async () => {
+async function addNewItem() {
+  const body = {
+    item_key: $('newItemKey').value.trim(),
+    item_name: $('newItemName').value.trim(),
+    item_type: $('newItemType').value,
+    unit: $('newItemUnit').value.trim(),
+    price_fen: Math.round(parseFloat($('newItemPrice').value || 0) * 100),
+  };
+  if (!body.item_key) return toast('请填写计费项标识', 'error');
+  try {
+    await api('/billing/api/admin/items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('计费项 ' + body.item_name + ' 已添加', 'success');
+    loadPrices();
+  } catch (e) { toast('添加失败：' + e.message, 'error'); }
+}
+function deleteItem(itemKey) {
+  confirmAction('删除计费项 ' + itemKey, '删除后该计费项将无法用于算价（历史账单不受影响）。', async () => {
     try {
-      const r = await api('/billing/api/admin/gpu_prices?gpu_type=' + encodeURIComponent(gpuType), { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
-      toast('已删除型号 ' + gpuType, 'success');
-      state.gpuPrices = {};
-      (r.gpu || []).forEach(p => { state.gpuPrices[p.gpu_type] = p.price_fen; });
+      await api('/billing/api/admin/items?item_key=' + encodeURIComponent(itemKey), { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+      toast('已删除计费项 ' + itemKey, 'success');
+      loadPrices();
+    } catch (e) { toast('删除失败：' + e.message, 'error'); }
+  });
+}
+function deleteOption(itemKey, optionKey) {
+  confirmAction('删除型号 ' + optionKey, '删除后该型号无法用于算价（历史账单不受影响）。', async () => {
+    try {
+      await api('/billing/api/admin/items/options?item_key=' + encodeURIComponent(itemKey) + '&option_key=' + encodeURIComponent(optionKey),
+        { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+      toast('已删除型号 ' + optionKey, 'success');
       loadPrices();
     } catch (e) { toast('删除失败：' + e.message, 'error'); }
   });
 }
 async function savePrices() {
-  const body = {};
-  ['cpu', 'memory'].forEach(t => {
-    const el = $('priceIn_' + t);
-    if (el) body[t] = Math.round(parseFloat(el.value || 0) * 100);
-  });
-  // GPU 型号价格（编辑格内）
-  const gpuUpdates = [];
-  document.querySelectorAll('[id^="gpuIn_"]').forEach(el => {
-    gpuUpdates.push({ gpu_type: el.dataset.type, price_fen: Math.round(parseFloat(el.value || 0) * 100) });
-  });
-  // 新增型号
-  const newType = ($('gpuNewType') ? $('gpuNewType').value.trim() : '');
-  const newPrice = ($('gpuNewPrice') ? parseFloat($('gpuNewPrice').value) : 0);
   try {
-    await api('/billing/api/admin/prices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    for (const g of gpuUpdates) {
-      if (!g.gpu_type) continue;
-      await api('/billing/api/admin/gpu_prices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) });
+    // 数量型改价
+    for (const it of state.items) {
+      if (it.item_type !== 'quantity') continue;
+      const el = $('priceIn_' + it.item_key);
+      if (!el) continue;
+      await api('/billing/api/admin/items/price', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_key: it.item_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
     }
-    if (newType && newPrice > 0) {
-      await api('/billing/api/admin/gpu_prices', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gpu_type: newType, price_fen: Math.round(newPrice * 100) }) });
+    // 型号细项改价 + 新增型号
+    for (const it of state.items) {
+      if (it.item_type !== 'model') continue;
+      for (const o of it.options || []) {
+        const el = $('optIn_' + it.item_key + '_' + o.option_key);
+        if (!el) continue;
+        await api('/billing/api/admin/items/price', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_key: it.item_key, option_key: o.option_key, price_fen: Math.round(parseFloat(el.value || 0) * 100) }) });
+      }
+      const newOpt = $('newOpt_' + it.item_key);
+      const newOptPrice = $('newOptPrice_' + it.item_key);
+      if (newOpt && newOpt.value.trim() && newOptPrice && parseFloat(newOptPrice.value) > 0) {
+        await api('/billing/api/admin/items/options', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_key: it.item_key, option_key: newOpt.value.trim(), price_fen: Math.round(parseFloat(newOptPrice.value) * 100) }) });
+      }
     }
     priceEditing = false;
     $('priceEditBtn').style.display = '';

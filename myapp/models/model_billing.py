@@ -65,13 +65,18 @@ class Wallet(Model, MyappModelBase):
         return '%s:%s' % (self.user_id, self.balance_fen)
 
 
-# GPU 型号价格：按显卡型号定价（元/卡/月），如 A40 / L20 / A100 / H100
-class GpuPrice(Model, MyappModelBase):
-    __tablename__ = 'gpu_price'
+# 计费项配置（动态，数据驱动）：数量型 quantity / 型号型 model
+# 后期新增计费项（存储/服务运维等）只需在前端添加配置，无需改代码
+class PriceConfig(Model, MyappModelBase):
+    __tablename__ = 'price_config'
     id = Column(Integer, primary_key=True)
-    gpu_type = Column(String(50), nullable=False, unique=True)    # 显卡型号，如 A40 / L20
-    price_fen = Column(Integer, default=0)                        # 每卡每月价格（分）
-    unit = Column(String(50), default='元/卡/月')
+    item_key = Column(String(50), nullable=False, unique=True)   # 计费项标识：cpu / memory / gpu / storage ...
+    item_name = Column(String(100), default='')                  # 显示名：CPU / 内存 / GPU / 存储
+    item_type = Column(String(20), default='quantity')           # quantity 数量型 / model 型号型
+    price_fen = Column(Integer, default=0)                       # 数量型：单价（分/单位/月）
+    unit = Column(String(50), default='')                        # 单位描述，如 元/核/月
+    sort_order = Column(Integer, default=0)                      # 展示顺序
+    enabled = Column(Integer, default=1)                         # 1 启用 / 0 停用
     updated_by = Column(String(100), default='')
     updated_on = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -80,25 +85,44 @@ class GpuPrice(Model, MyappModelBase):
         return round(self.price_fen / 100.0, 4) if self.price_fen else 0
 
     def __repr__(self):
-        return '%s:%s' % (self.gpu_type, self.price_fen)
+        return '%s:%s' % (self.item_key, self.price_fen)
 
 
-# 计费标准（资源单价）：cpu / memory / gpu_memory，单位价格按"每小时"
-class PriceConfig(Model, MyappModelBase):
-    __tablename__ = 'price_config'
+# 型号型计费项的细项价格（如 GPU 的 A40 / L20 各自单价）
+class ItemPriceDetail(Model, MyappModelBase):
+    __tablename__ = 'item_price_detail'
     id = Column(Integer, primary_key=True)
-    resource_type = Column(String(50), nullable=False, unique=True)   # cpu / memory / gpu_memory
-    price_fen = Column(Integer, default=0)                            # 每单位每小时价格（分）
-    unit = Column(String(50), default='')                             # 单位描述，如 元/核/小时
-    updated_by = Column(String(100), default='')                      # 最后修改人
+    item_id = Column(Integer, ForeignKey('price_config.id'), nullable=False)
+    option_key = Column(String(50), nullable=False)              # 型号标识：A40 / L20
+    option_name = Column(String(100), default='')                # 显示名
+    price_fen = Column(Integer, default=0)                       # 该型号单价（分/单位/月）
+    updated_by = Column(String(100), default='')
     updated_on = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    __table_args__ = (UniqueConstraint('item_id', 'option_key', name='uq_item_option'),)
 
     @property
     def price_yuan(self):
         return round(self.price_fen / 100.0, 4) if self.price_fen else 0
 
     def __repr__(self):
-        return '%s:%s' % (self.resource_type, self.price_fen)
+        return '%s:%s' % (self.option_key, self.price_fen)
+
+
+# 账单明细项（快照）：每笔账单的每个计费项一行，价格以当时为准
+class BillItem(Model, MyappModelBase):
+    __tablename__ = 'bill_item'
+    id = Column(Integer, primary_key=True)
+    bill_id = Column(Integer, ForeignKey('bill.id'), nullable=False)
+    item_key = Column(String(50), default='')
+    item_name = Column(String(100), default='')
+    option_key = Column(String(50), default='')                  # 型号（型号型）
+    quantity = Column(Float, default=0)                          # 数量
+    unit_price_fen = Column(Integer, default=0)                  # 单价快照（分/单位/月）
+    amount_fen = Column(Integer, default=0)                      # 该项费用（分）
+    created_on = Column(DateTime, default=datetime.datetime.now, nullable=False)
+
+    def __repr__(self):
+        return '%s:%s' % (self.item_key, self.amount_fen)
 
 
 # 资金流水：充值/消费/转账全部走流水，双向审计

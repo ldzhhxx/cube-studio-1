@@ -128,6 +128,13 @@
   .price-cell .val small { font-size: 12.5px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
   .price-cell .meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
   .price-edit-note { font-size: 12px; color: var(--text-3); padding: 10px 20px; border-top: 1px solid #f1f3fa; }
+  .price-cell-model { padding: 14px 16px; }
+  .price-opt-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px dashed #f1f3fa; }
+  .price-opt-row:last-child { border-bottom: none; }
+  .price-opt-name { font-size: 13px; font-weight: 600; min-width: 90px; }
+  .price-opt-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .price-opt-val small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+  .price-opt-unit { font-size: 11.5px; color: var(--text-3); min-width: 62px; text-align: right; }
   @media (max-width: 900px) {
     .mini-stats { grid-template-columns: 1fr; }
     .price-grid { grid-template-columns: 1fr; }
@@ -404,32 +411,35 @@ function switchTab(tab) {
   ['bill', 'log'].forEach(t => { $('panel-' + t).style.display = t === tab ? '' : 'none'; });
 }
 
-const PRICE_META = {
-  cpu: { name: 'CPU', ico: 'cpu', color: '#eef1fe', colorTxt: '#4f6ef7' },
-  memory: { name: '内存', ico: 'drive', color: '#e8f9ef', colorTxt: '#22c55e' },
+const ITEM_META = {
+  cpu: { ico: 'cpu', color: '#eef1fe', colorTxt: '#4f6ef7' },
+  memory: { ico: 'drive', color: '#e8f9ef', colorTxt: '#22c55e' },
+  gpu: { ico: 'monitor', color: '#fef4e2', colorTxt: '#f59e0b' },
 };
 async function loadPrices() {
   try {
     const r = await api('/billing/api/prices');
-    const prices = r.prices || [];
-    const gpus = r.gpu || [];
-    const cpuMem = prices.filter(p => PRICE_META[p.resource_type]).map(p => {
-      const meta = PRICE_META[p.resource_type];
+    const items = r.items || [];
+    $('priceRow').innerHTML = items.map(it => {
+      const meta = ITEM_META[it.item_key] || { ico: 'tag', color: '#eef1fe', colorTxt: '#4f6ef7' };
+      if (it.item_type === 'model') {
+        const opts = (it.options || []).map(o =>
+          '<div class="price-opt-row">' +
+            '<div class="price-opt-name">' + esc(o.option_name) + '</div>' +
+            '<div class="price-opt-val">' + o.price_yuan + '<small>元</small></div>' +
+            '<div class="price-opt-unit">' + esc(it.unit) + '</div></div>'
+        ).join('');
+        return '<div class="price-cell price-cell-model">' +
+          '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + '</div>' +
+          opts + '</div>';
+      }
       return '<div class="price-cell">' +
-        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + meta.name + '</div>' +
-        '<div class="val">' + p.price_yuan + '<small>元</small></div>' +
-        '<div class="meta">' + esc(p.unit) + '</div></div>';
-    }).join('');
-    const gpuCells = gpus.map(p =>
-      '<div class="price-cell">' +
-        '<div class="res"><span class="res-ico" style="background:#fef4e2;color:#f59e0b"><svg class="ico"><use href="#i-monitor"/></svg></span>' + esc(p.gpu_type) + '</div>' +
-        '<div class="val">' + p.price_yuan + '<small>元</small></div>' +
-        '<div class="meta">' + esc(p.unit) + '</div></div>'
-    ).join('');
-    $('priceRow').innerHTML = (cpuMem || '') + gpuCells ||
-      '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>';
+        '<div class="res"><span class="res-ico" style="background:' + meta.color + ';color:' + meta.colorTxt + '"><svg class="ico"><use href="#i-' + meta.ico + '"/></svg></span>' + esc(it.item_name) + '</div>' +
+        '<div class="val">' + it.price_yuan + '<small>元</small></div>' +
+        '<div class="meta">' + esc(it.unit) + '</div></div>';
+    }).join('') || '<div class="price-cell"><div class="muted">尚未配置计费标准</div></div>';
   } catch (e) {
-    $('priceRow').innerHTML = '<div class="price-cell"><div class="muted">尚未配置计费标准，请到计费控制台「修改价格」添加</div></div>';
+    $('priceRow').innerHTML = '<div class="price-cell"><div class="muted">计费标准加载失败</div></div>';
   }
 }
 

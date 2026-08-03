@@ -3,7 +3,7 @@
 -- 生成时间：2026-08-03
 --
 -- 执行说明：
---   1. 计费表（bill / wallet / account_log / price_config / gpu_price）会【先删除再重建】，幂等可重复执行
+--   1. 计费表（bill / wallet / account_log / price_config / item_price_detail / bill_item）会【先删除再重建】，幂等可重复执行
 --   2. 本脚本【不包含任何数据】：价格、GPU 型号、用户数据请在前端页面自行添加
 --      （控制台「计费标准」面板可添加 CPU/内存价格与 GPU 型号；用户由平台注册）
 --   3. account_log 含冲正字段（reversed / ref_log_id）
@@ -13,31 +13,37 @@
 DROP TABLE IF EXISTS `account_log`;
 DROP TABLE IF EXISTS `bill`;
 DROP TABLE IF EXISTS `wallet`;
-DROP TABLE IF EXISTS `gpu_price`;
 DROP TABLE IF EXISTS `price_config`;
 
 CREATE TABLE `price_config` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `resource_type` varchar(50) NOT NULL,
-  `price_fen` int(11) DEFAULT NULL,
-  `unit` varchar(50) DEFAULT NULL,
+  `item_key` varchar(50) NOT NULL,           -- 计费项标识：cpu / memory / gpu / storage ...
+  `item_name` varchar(100) DEFAULT NULL,     -- 显示名：CPU / 内存 / GPU / 存储
+  `item_type` varchar(20) DEFAULT 'quantity',-- quantity 数量型 / model 型号型
+  `price_fen` int(11) DEFAULT NULL,          -- 数量型单价（分/单位/月）
+  `unit` varchar(50) DEFAULT NULL,           -- 如 元/核/月
+  `sort_order` int(11) DEFAULT NULL,
+  `enabled` int(11) DEFAULT 1,
   `updated_by` varchar(100) DEFAULT NULL,
   `updated_on` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_price_resource` (`resource_type`)
+  UNIQUE KEY `uq_price_resource` (`item_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-
-CREATE TABLE `gpu_price` (
+CREATE TABLE `item_price_detail` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `gpu_type` varchar(50) NOT NULL,           -- GPU 型号（A40/L20/A100/H100...）
-  `price_fen` int(11) DEFAULT NULL,          -- 每卡每月（分）
-  `unit` varchar(50) DEFAULT NULL,           -- 如 元/卡/月
+  `item_id` int(11) NOT NULL,                -- FK price_config.id（型号型计费项）
+  `option_key` varchar(50) NOT NULL,         -- 型号：A40 / L20
+  `option_name` varchar(100) DEFAULT NULL,
+  `price_fen` int(11) DEFAULT NULL,          -- 该型号单价（分/单位/月）
   `updated_by` varchar(100) DEFAULT NULL,
   `updated_on` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_gpu_type` (`gpu_type`)
+  UNIQUE KEY `uq_item_option` (`item_id`, `option_key`),
+  CONSTRAINT `fk_detail_item` FOREIGN KEY (`item_id`) REFERENCES `price_config` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
 
 
 CREATE TABLE `bill` (
@@ -68,6 +74,20 @@ CREATE TABLE `bill` (
   KEY `ix_bill_created_on` (`created_on`),
   KEY `fk_bill_user` (`user_id`),
   CONSTRAINT `fk_bill_user` FOREIGN KEY (`user_id`) REFERENCES `ab_user` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE `bill_item` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `bill_id` int(11) NOT NULL,                -- FK bill.id
+  `item_key` varchar(50) DEFAULT NULL,
+  `item_name` varchar(100) DEFAULT NULL,
+  `option_key` varchar(50) DEFAULT NULL,     -- 型号
+  `quantity` float DEFAULT NULL,
+  `unit_price_fen` int(11) DEFAULT NULL,     -- 单价快照（分/单位/月）
+  `amount_fen` int(11) DEFAULT NULL,         -- 该项费用（分）
+  `created_on` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_bill_item_bill_id` (`bill_id`),
+  CONSTRAINT `fk_bill_item_bill` FOREIGN KEY (`bill_id`) REFERENCES `bill` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
