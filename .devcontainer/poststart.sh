@@ -24,10 +24,16 @@ fi
 cd "$COMPOSE_DIR"
 docker compose up -d
 
-# 4. 确认 80 端口转发为 public（GitHub 转发层对 private 端口强制登录，会打不开页面）
+# 4. 播种扣费模块演示数据（幂等：用户/节点/样例快照已存在则跳过）
+if [ -f "$COMPOSE_DIR/seed_demo.sh" ]; then
+  bash "$COMPOSE_DIR/seed_demo.sh" || true
+fi
+
+# 5. 确认 80 端口转发为 public（GitHub 转发层对 private 端口强制登录，会打不开页面）
 if command -v gh >/dev/null 2>&1; then
   CODESPACE="${CODESPACE_NAME:-$(gh codespace list --json name -q '.[0].name' 2>/dev/null)}"
   [ -n "$CODESPACE" ] && gh codespace ports visibility 80:public -c "$CODESPACE" >/dev/null 2>&1 || true
 fi
 
 echo "cube-studio 服务已启动：访问 https://$(hostname)-80.app.github.dev/frontend/ （admin / admin）"
+echo "演示账号：zhoujunchi / 123456、chenjinwen1 / 123456；扣费管理入口：计费中心 → 扣费管理"

@@ -103,6 +103,14 @@ docker compose up -d --force-recreate  # 强制重建
 docker compose down                  # 停止全部（保留数据卷）
 ```
 
+## 扣费模块（快照自动扣费）
+
+- 数据源：`pod_info_history_v2`（按天快照，pod_uid 一天一条，duration 为累计小时）+ `all_node_memory`（node_name → 显卡型号，NULL=CPU 节点）
+- **演示数据自动播种**：`.devcontainer/poststart.sh` 在服务拉起后自动执行 `install/docker/seed_demo.sh`（幂等）——测试账号 zhoujunchi / chenjinwen1（密码 123456）、5 个节点示例、3 条样例任务快照
+- 入口：左侧导航 **计费中心 → 扣费管理**（管理员）/ **我的账单**（用户）
+- 首次体验流程：扣费管理 → ① 规则配置（可设"开始收费时间"，只收该时间之后的时长）→ ② 执行扣费 → ③ 推送扣费单 → 用 zhoujunchi 登录我的账单同意/质疑 → ⑤ 自动入账扣钱包
+- 定时扣费：规则配置里设置周期（分钟），由 beat 服务执行；超时自动扣费默认 7 天（可配）
+
 ## 代码修改如何生效
 
 - 后端代码：`../../myapp/` 挂载进容器，`STAGE: dev` 下 Flask debug 模式自动热更新，改完直接刷新页面
