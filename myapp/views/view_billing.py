@@ -1613,7 +1613,7 @@ def billing_admin_deduct_config():
         return err_response('Content-Type must be application/json', 415)
     data = request.get_json(force=True, silent=True) or {}
     allowed = ('min_duration_minutes', 'month_hours', 'auto_settle_days', 'gpu_fallback',
-               'enabled', 'schedule_interval_minutes')
+               'enabled', 'schedule_interval_minutes', 'billing_start_time')
     for k, v in data.items():
         if k not in allowed:
             continue

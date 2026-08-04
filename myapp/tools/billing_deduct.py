@@ -118,6 +118,44 @@ def all_pod_uids():
     return [r[0] for r in rows if r[0]]
 
 
+def parse_start_time(value):
+    """billing_start_time 配置解析：'YYYY-MM-DD HH:MM:SS' 或 'YYYY-MM-DD'；空/非法返回 None"""
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        if len(s) == 10:
+            return datetime.datetime.strptime(s, '%Y-%m-%d')
+        return datetime.datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return None
+
+
+def billing_baseline(snap, start_time):
+    """起算基数（小时）：任务在开始收费时间时刻已运行的时长。
+    口径：start 之前最后一条快照的 duration（start 之后的增量才计费）。
+    返回 (baseline, in_range)：
+      in_range=False = 任务最新快照仍在 start 之前（任务在收费开始前已结束，本次不收费）
+      start 前无快照 = 任务在 start 后创建，baseline=0 全部计费
+      未配置开始收费时间 = baseline=0（从任务创建起全部计费）"""
+    if start_time is None:
+        return 0.0, True
+    if snap.update_at and snap.update_at < start_time:
+        return 0.0, False
+    row = db.session.query(PodInfoHistoryV2).filter(
+        PodInfoHistoryV2.pod_uid == snap.pod_uid,
+        PodInfoHistoryV2.update_at < start_time,
+    ).order_by(PodInfoHistoryV2.update_at.desc(), PodInfoHistoryV2.id.desc()).first()
+    if not row:
+        return 0.0, True
+    try:
+        return float(str(row.duration or '').strip() or 0), True
+    except Exception:
+        return 0.0, True
+
+
 def latest_snapshot(pod_uid, for_update=False):
     """某任务的最新快照行（update_at / id 最大）。
     for_update=True 时加行锁，防并发重复扣费"""
@@ -160,6 +198,7 @@ _SKIP_COUNTERS = {
     'no_user': 'skipped_no_user',
     'whitelist': 'skipped_whitelist',
     'no_delta': 'skipped_no_delta',
+    'not_in_range': 'skipped_below_min',   # 全部快照在开始收费时间之前
     'amount_zero': 'skipped_below_min',
 }
 
@@ -188,12 +227,13 @@ def _run_engine(run):
     whitelist = build_whitelist()
     gpu_parent = get_gpu_parent()
     min_duration_hours = get_config_float('min_duration_minutes', 10) / 60.0
+    start_time = parse_start_time(get_config('billing_start_time', ''))
 
     computed = []       # (bill_data, 锁定的快照行) 待写入
     errors = []
     for pod_uid in all_pod_uids():
         try:
-            data = _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours)
+            data = _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours, start_time)
         except _Skip as sk:
             counter = _SKIP_COUNTERS.get(sk.reason)
             if counter:
@@ -234,8 +274,8 @@ def _run_engine(run):
         run.remark = ((run.remark or '') + '; 异常pod: ' + '; '.join(errors))[:500]
 
 
-def _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours):
-    """单个 pod 计算：锁定最新快照行 → 过滤 → 增量 → 金额。
+def _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours, start_time=None):
+    """单个 pod 计算：锁定最新快照行 → 过滤 → 起算基数 → 增量 → 金额。
     返回 {'_bill_data': bill_data, '_snapshot': snap}；跳过抛 _Skip"""
     # 行锁：并发执行扣费时，第二个事务会阻塞到这里，看到已更新的 billed_duration 后增量=0 跳过
     snap = latest_snapshot(pod_uid, for_update=True)
@@ -270,10 +310,16 @@ def _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours):
     except Exception:
         gpu_num = 0.0
 
-    # 6. 增量结算：最新 duration − 已扣时长（指针就在最新行上）
+    # 6. 起算基数 + 增量结算：
+    #    起算基数 = 最早一个快照时间 ≥ 开始收费时间的快照的 duration（该时间之前的时长不计费）；
+    #    未配置开始收费时间 = 0（从任务创建起全部计费）
+    #    增量 = 最新 duration − max(已扣时长, 起算基数)
     #    注意 billed_duration 存 MySQL float 列（float32），duration 是 varchar 解析（float64），
     #    直接相减有 1e-5 级误差，归整到 4 位小数（0.0001h=0.36s）避免"幽灵增量"重复计费
-    billed_to = float(snap.billed_duration or 0)
+    baseline, in_range = billing_baseline(snap, start_time)
+    if not in_range:
+        raise _Skip('not_in_range')
+    billed_to = max(float(snap.billed_duration or 0), baseline)
     delta = round(duration - billed_to, 4)
     if delta <= 0:
         raise _Skip('no_delta')

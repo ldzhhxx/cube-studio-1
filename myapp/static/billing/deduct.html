@@ -482,6 +482,7 @@
     <label class="field">月→小时折算(小时/月)<br><input class="input" id="dcMonth" style="width:110px" title="月单价 ÷ 该值 = 小时单价"></label>
     <label class="field">超时自动扣费(天)<br><input class="input" id="dcDays" style="width:110px" title="推送后超过该天数未处理，自动同意并入账"></label>
     <label class="field">定时扣费周期(分钟)<br><input class="input" id="dcInterval" style="width:110px" title="0=关闭定时，1440=每天，10080=每周"></label>
+    <label class="field">开始收费时间<br><input class="input" id="dcStart" type="datetime-local" style="width:200px" title="只收该时间之后的运行时长，之前的不计费；清空=从任务创建起全部计费"></label>
     <label class="field">GPU兜底型号<br><input class="input" id="dcGpu" style="width:110px" title="节点查不到显卡型号时按该型号计费"></label>
     <label class="field">功能开关<br><select class="select" id="dcEnabled"><option value="1">开启</option><option value="0">关闭</option></select></label>
   </div>
@@ -622,6 +623,7 @@ async function loadDeductConfig() {
     $('dcMonth').value = c.month_hours || 720;
     $('dcDays').value = c.auto_settle_days || 7;
     $('dcInterval').value = c.schedule_interval_minutes || 0;
+    $('dcStart').value = c.billing_start_time ? String(c.billing_start_time).replace(' ', 'T') : '';
     $('dcGpu').value = c.gpu_fallback || 'L20';
     $('dcEnabled').value = (c.enabled === '0' || c.enabled === 0) ? '0' : '1';
   } catch (e) { toast(e.message, 'error'); }
@@ -635,6 +637,7 @@ async function saveDeductConfig() {
         month_hours: $('dcMonth').value,
         auto_settle_days: $('dcDays').value,
         schedule_interval_minutes: $('dcInterval').value,
+        billing_start_time: $('dcStart').value ? String($('dcStart').value).replace('T', ' ') : '',
         gpu_fallback: $('dcGpu').value,
         enabled: $('dcEnabled').value,
       }),

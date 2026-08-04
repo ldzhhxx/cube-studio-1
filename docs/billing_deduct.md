@@ -17,7 +17,8 @@
 |---|---|---|
 | 任务标识 | `pod_uid` | 改规格 = 重启任务 = 新 pod_uid，不存在中途规格变化问题 |
 | 有效任务 | `status='Running'` **且** `duration > 最低付费时长阈值` | 阈值管理员可配置（默认 10 分钟） |
-| 计费时长 | `最新快照 duration − 上次已扣 duration` = 本次增量；首扣 = 全部时长 | **增量结算**：任务续跑、多次扣费不重复收；已结束任务 duration 定格，自动不再扣 |
+| 计费时长 | `最新快照 duration − max(上次已扣 duration, 起算基数)` = 本次增量；首扣 = 全部时长 | **增量结算**：任务续跑、多次扣费不重复收；已结束任务 duration 定格，自动不再扣 |
+| 开始收费时间 | `billing_start_time` 配置（空=全部计费） | 设置后只收该时间之后的时长：起算基数 = start 之前最后一条快照的 duration；任务在 start 前已结束则不收费 |
 | 资源规格 | 最新快照的 `gpu_usage` / `mem_limit_gb` / `cpu_limit` | GPU 卡数 = `gpu_usage / 100`（100=整卡，50=半卡） |
 | GPU 型号 | 快照 `node_name` JOIN `all_node_memory.node_name` 取 `gpu_type` | `gpu_type=NULL` = CPU 节点，不收 GPU 费；**node_name 查不到时按 L20 兜底**（已确认） |
 | GPU 单价 | 按型号从 price_config 读取（A40/L20/A100/H100...） | 例：L20 = 2000 元/卡/月 |

@@ -203,6 +203,7 @@ INSERT INTO `billing_config` (`cfg_key`, `cfg_value`, `cfg_desc`) VALUES
 ('gpu_fallback',         'L20',   'node_name 查不到显卡型号时的兜底型号'),
 ('enabled',              '1',     '扣费功能总开关（0 关闭）'),
 ('schedule_interval_minutes', '0', '定时扣费周期（分钟，0=关闭，1440=每天，10080=每周）'),
+('billing_start_time',   '',      '开始收费时间（YYYY-MM-DD HH:MM:SS，空=从任务创建起全部计费）'),
 ('last_scheduled_run',   '',      '上次定时扣费执行时间');
 
 -- ---------- 2. 扣费数据源表（外部采集维护，全新环境才建） ----------
