@@ -185,6 +185,7 @@ def billing_push():
             bill_fields = dict(
                 task_name=str(item.get('task_name', '') or '')[:200],
                 run_id=str(item.get('run_id', '') or '')[:200],
+                namespace=str(item.get('namespace', '') or '').strip()[:200],
                 username=username,
                 user_id=user_id,
                 org=org,
@@ -199,6 +200,10 @@ def billing_push():
                 end_time=parse_time(item.get('end_time')),
                 source='external',
             )
+            # 可选费用明细（展示用快照）：有 items 时按当前单价算价，金额仍以 amount_fen 为准
+            calc_items = None
+            if item.get('items'):
+                calc_items, _ = calc_resources(item['items'], safe_int(item.get('duration_seconds')))
             bill = db.session.query(Bill).filter_by(pod_name=pod_name).first()
             if bill:
                 # 重复推送：修正数据；金额变化时结算差额（补扣/退回），不重复扣全额
@@ -206,6 +211,8 @@ def billing_push():
                 for k, v in bill_fields.items():
                     setattr(bill, k, v)
                 bill.status = 'settled'
+                if calc_items is not None:
+                    _write_bill_items(bill.id, calc_items)  # 明细快照重建（幂等）
                 diff = bill.amount_fen - old_amount
                 if user_id and diff != 0 and bill.amount_fen > 0:
                     wallet = lock_wallet(user_id)
@@ -235,6 +242,8 @@ def billing_push():
                 old_amount = bill.amount_fen or 0
                 for k, v in bill_fields.items():
                     setattr(bill, k, v)
+                if calc_items is not None:
+                    _write_bill_items(bill.id, calc_items)  # 明细快照重建（幂等）
                 diff = bill.amount_fen - old_amount
                 if user_id and diff != 0 and bill.amount_fen > 0:
                     wallet = lock_wallet(user_id)
@@ -253,6 +262,8 @@ def billing_push():
                 db.session.commit()
                 results.append({'pod_name': pod_name, 'result': 'updated'})
                 continue
+            if calc_items is not None:
+                _write_bill_items(bill.id, calc_items)  # 新账单明细快照
             if user_id and bill.amount_fen > 0:
                 wallet = lock_wallet(user_id)
                 before = wallet.balance_fen
@@ -422,11 +433,13 @@ def billing_transfer():
 
 def _do_deduct(item):
     """单笔手动扣费：resources 后端自动算价 → bill 账本 + bill_item 明细快照 + 扣钱包 + consume 流水
-    兼容旧调用：无 resources 时沿用 amount_fen（旧字段 cpu/memory/gpu_num/gpu_type 自动转换）"""
+    兼容旧调用：无 resources 时沿用 amount_fen（旧字段 cpu/memory/gpu_num/gpu_type 自动转换）
+    pod_name 选填（为空存 NULL，不自动生成）；namespace 选填"""
     username = str(item.get('username', '') or '').strip()
     remark = str(item.get('remark', '') or '')[:500]
     task_name = str(item.get('task_name', '') or '')[:200]
-    pod_name = str(item.get('pod_name', '') or '').strip()
+    namespace = str(item.get('namespace', '') or '').strip()[:200]
+    pod_name = str(item.get('pod_name', '') or '').strip() or None  # 选填：为空存 NULL，不自动生成
     duration_seconds = safe_int(item.get('duration_seconds'))
     resources = item.get('resources')
     # 旧字段兼容：cpu/memory/gpu_num/gpu_type → resources（GPU 父项按实际 model 型分组查找）
@@ -460,36 +473,36 @@ def _do_deduct(item):
     user = get_user_by_username(username)
     if not user:
         raise ValueError('user %s not found' % username)
-    # 基础列回填（展示用）：从算价明细映射 cpu/memory/gpu
+    # 基础列回填（展示用）：从算价明细映射 cpu/memory/gpu（按配置匹配，不硬编码大小写；
+    # GPU 汇总按"子型号挂载在型号型分组下"归并，分组名/子型号名任意都生效）
     cpu = memory = gpu_num = gpu_memory = 0.0
     gpu_type = ''
+    pc_map = {p.item_key: p for p in db.session.query(PriceConfig).all()}
     for ci in calc_items:
-        if ci['item_key'] == 'cpu':
+        key = (ci['item_key'] or '').lower()
+        if key == 'cpu':
             cpu = ci['quantity']
-        elif ci['item_key'] == 'memory':
+        elif key == 'memory':
             memory = ci['quantity']
-        elif ci['item_key'] == 'gpu':
-            gpu_num = ci['quantity']
-            gpu_type = ci['option_key']
-    # pod_name 不传则自动生成（bill 账本要求 pod_name 唯一，手动扣费建议填写真实任务 pod）
-    if not pod_name:
-        pod_name = 'manual-%s-%s' % (user.username, datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')[:17])
-    exist = db.session.query(Bill).filter_by(pod_name=pod_name).first()
-    if exist:
-        raise ValueError('pod_name %s already exists, use another pod_name' % pod_name)
-    bill = Bill(pod_name=pod_name, username=user.username, user_id=user.id, org=user.org,
+        else:
+            conf = pc_map.get(ci['item_key'])
+            parent = pc_map.get(conf.parent_key) if conf and conf.parent_key else None
+            if conf and parent and parent.item_type == 'model':
+                gpu_num += ci['quantity']
+                gpu_type = ci['option_key'] or ci['item_name']
+    # pod_name 选填：为空存 NULL（唯一索引对 NULL 不生效，可多条）；填写则校验唯一
+    if pod_name:
+        exist = db.session.query(Bill).filter_by(pod_name=pod_name).first()
+        if exist:
+            raise ValueError('pod_name %s already exists, use another pod_name' % pod_name)
+    bill = Bill(pod_name=pod_name, namespace=namespace, username=user.username, user_id=user.id, org=user.org,
                 task_name=task_name, amount_fen=amount_fen, status='settled', source='manual',
                 cpu=cpu, memory=memory, gpu_num=gpu_num, gpu_type=gpu_type, gpu_memory=gpu_memory,
                 duration_seconds=duration_seconds)
     db.session.add(bill)
     db.session.flush()
     # 明细快照（历史价格不可变）
-    for ci in calc_items:
-        db.session.add(BillItem(
-            bill_id=bill.id, item_key=ci['item_key'], item_name=ci['item_name'],
-            option_key=ci['option_key'], quantity=ci['quantity'],
-            unit_price_fen=ci['unit_price_fen'], amount_fen=ci['amount_fen'],
-        ))
+    _write_bill_items(bill.id, calc_items)
     wallet = lock_wallet(user.id)
     before = wallet.balance_fen
     wallet.balance_fen -= amount_fen
@@ -504,6 +517,18 @@ def _do_deduct(item):
         'cpu': cpu, 'memory': memory, 'gpu_num': gpu_num, 'gpu_type': gpu_type, 'gpu_memory': gpu_memory,
         'duration_seconds': duration_seconds, 'items': calc_items, 'result': 'settled',
     }
+
+
+def _write_bill_items(bill_id, calc_items):
+    """写入账单明细快照：先清空再写，重复推送/修正时幂等重建"""
+    db.session.query(BillItem).filter_by(bill_id=bill_id).delete()
+    for ci in calc_items:
+        db.session.add(BillItem(
+            bill_id=bill_id, item_key=ci['item_key'], item_name=ci['item_name'],
+            option_key=ci['option_key'], quantity=ci['quantity'],
+            unit_price_fen=ci['unit_price_fen'], unit=ci.get('unit', ''),
+            amount_fen=ci['amount_fen'],
+        ))
 
 
 @app.route('/billing/api/deduct', methods=['POST'])
@@ -575,10 +600,16 @@ def billing_my_bills():
     bills = _sort_query(query, Bill, request.args.to_dict(), Bill.id).offset((page - 1) * page_size).limit(page_size).all()
     result = [{
         'id': b.id,
-        'pod_name': b.pod_name, 'task_name': b.task_name, 'run_id': b.run_id,
+        'pod_name': b.pod_name, 'namespace': b.namespace or '',
+        'task_name': b.task_name, 'run_id': b.run_id,
         'cpu': b.cpu, 'memory': b.memory, 'gpu_num': b.gpu_num, 'gpu_memory': b.gpu_memory,
         'duration_seconds': b.duration_seconds, 'amount_fen': b.amount_fen, 'amount_yuan': round(b.amount_fen / 100.0, 2),
         'status': b.status,
+        'items': [{
+            'item_key': i.item_key, 'item_name': i.item_name, 'option_key': i.option_key,
+            'quantity': i.quantity, 'unit_price_fen': i.unit_price_fen, 'unit': i.unit or '',
+            'amount_fen': i.amount_fen,
+        } for i in db.session.query(BillItem).filter_by(bill_id=b.id).all()],
         'created_on': b.created_on.strftime('%Y-%m-%d %H:%M:%S') if b.created_on else '',
     } for b in bills]
     return ok_response({'count': total, 'page': page, 'page_size': page_size, 'bills': result})
@@ -800,6 +831,7 @@ def calc_resources(resources, duration_seconds):
             'option_key': opt,
             'quantity': quantity,
             'unit_price_fen': unit_fen,
+            'unit': item.unit or '',
             'amount_fen': amount,
         })
     return result, total
@@ -827,6 +859,7 @@ def _bill_to_dict(b):
     return {
         'id': b.id,
         'pod_name': b.pod_name,
+        'namespace': b.namespace or '',
         'task_name': b.task_name,
         'run_id': b.run_id,
         'username': b.username,
@@ -845,7 +878,8 @@ def _bill_to_dict(b):
         'source': b.source or '',
         'items': [{
             'item_key': i.item_key, 'item_name': i.item_name, 'option_key': i.option_key,
-            'quantity': i.quantity, 'unit_price_fen': i.unit_price_fen, 'amount_fen': i.amount_fen,
+            'quantity': i.quantity, 'unit_price_fen': i.unit_price_fen, 'unit': i.unit or '',
+            'amount_fen': i.amount_fen,
         } for i in db.session.query(BillItem).filter_by(bill_id=b.id).all()],
         'created_on': b.created_on.strftime('%Y-%m-%d %H:%M:%S') if b.created_on else '',
     }
@@ -1326,11 +1360,11 @@ def billing_admin_export():
             ])
     else:
         bills = _bill_query(params).order_by(Bill.id.desc()).limit(limit).all()
-        writer.writerow(['ID', 'pod名', '任务名', 'run_id', '用户', '部门', 'cpu核', '内存G', 'GPU卡', '显存G',
+        writer.writerow(['ID', 'pod名', '命名空间', '任务名', 'run_id', '用户', '部门', 'cpu核', '内存G', 'GPU卡', '显存G',
                          '时长(秒)', '金额(分)', '金额(元)', '开始时间', '结束时间', '状态', '入账时间'])
         for b in bills:
             writer.writerow([
-                b.id, b.pod_name, b.task_name or '', b.run_id or '', b.username or '', b.org or '',
+                b.id, b.pod_name, b.namespace or '', b.task_name or '', b.run_id or '', b.username or '', b.org or '',
                 b.cpu or 0, b.memory or 0, b.gpu_num or 0, b.gpu_memory or 0,
                 b.duration_seconds or 0, b.amount_fen or 0, round((b.amount_fen or 0) / 100.0, 2),
                 b.start_time.strftime('%Y-%m-%d %H:%M:%S') if b.start_time else '',

@@ -170,14 +170,21 @@ curl -X POST http://你的平台/billing/api/push \
   -d '[{
     "username": "zhangsan",          # ab_user 中的用户名
     "task_name": "train-resnet50",
-    "pod_name": "resnet50-x7f2k",    # 幂等键，重复推送只修正数据
+    "pod_name": "resnet50-x7f2k",    # 幂等键，必填，重复推送只修正数据
+    "namespace": "ai-train",         # 命名空间（选填）
     "cpu": 4, "memory": 16, "gpu_num": 1, "gpu_memory": 16,
     "duration_seconds": 3600,
-    "amount_fen": 1234,              # 费用（分）
+    "amount_fen": 1234,              # 费用（分），金额以推送为准
+    "items": [                       # 费用明细（选填，展示用；金额仍以 amount_fen 为准）
+      {"item_key": "cpu", "quantity": 4},
+      {"item_key": "GPU_l20", "option_key": "L20", "quantity": 100}
+    ],
     "start_time": "2026-08-03 10:00:00",
     "end_time": "2026-08-03 11:00:00"
   }]'
 ```
+
+> 平台用户账单"费用明细"支持点击行展开查看每条收费项扣费详情（名称 × 数量 × 单价 = 金额）。**建议外部系统推送时带上 `items`**，否则账单只有汇总列、无明细可展示。
 
 返回 `result`：`settled` 已入账扣费 / `updated` 重复推送已修正（金额变化自动差额补扣/退回）/ `settled_no_user` 用户名对不上未扣费 / `skip` 缺 pod_name / `reject` 金额非法。
 

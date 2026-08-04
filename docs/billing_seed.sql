@@ -12,6 +12,7 @@
 -- ---------- 1. 删除并重建计费表 ----------
 DROP TABLE IF EXISTS `account_log`;
 DROP TABLE IF EXISTS `bill`;
+DROP TABLE IF EXISTS `bill_item`;
 DROP TABLE IF EXISTS `wallet`;
 DROP TABLE IF EXISTS `price_config`;
 
@@ -37,7 +38,8 @@ CREATE TABLE `price_config` (
 
 CREATE TABLE `bill` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `pod_name` varchar(200) NOT NULL,
+  `pod_name` varchar(200) DEFAULT NULL,       -- pod名：推送幂等键（必填）；手动扣费选填，为空存 NULL
+  `namespace` varchar(200) DEFAULT NULL,      -- 命名空间（手动扣费/推送可选）
   `task_name` varchar(200) DEFAULT NULL,
   `run_id` varchar(200) DEFAULT NULL,
   `username` varchar(100) DEFAULT NULL,
@@ -72,6 +74,7 @@ CREATE TABLE `bill_item` (
   `option_key` varchar(50) DEFAULT NULL,     -- 型号
   `quantity` float DEFAULT NULL,
   `unit_price_fen` int(11) DEFAULT NULL,     -- 单价快照（分/单位/月）
+  `unit` varchar(50) DEFAULT NULL,           -- 单位快照（如 元/GB/月）
   `amount_fen` int(11) DEFAULT NULL,         -- 该项费用（分）
   `created_on` datetime NOT NULL,
   PRIMARY KEY (`id`),

@@ -200,6 +200,21 @@
   .amount-plus { color: var(--success); font-weight: 600; }
   .amount-minus { color: var(--danger); font-weight: 600; }
   .muted { color: var(--text-3); }
+
+  /* ===== 账单行点击展开明细 ===== */
+  .bill-row { cursor: pointer; }
+  .bill-row .arrow { display: inline-block; width: 12px; color: var(--text-3); font-size: 11px; transition: transform .15s ease; }
+  .bill-row.open .arrow { transform: rotate(90deg); color: var(--primary); }
+  .pod-cell .ns { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+  .bill-detail-row td { background: #f7f9fd; padding: 10px 14px 14px 36px; }
+  .bill-detail-items { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bill-detail-item {
+    display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e8ecf5;
+    border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text-2);
+  }
+  .bill-detail-item b { color: var(--text); font-weight: 600; }
+  .bill-detail-item .amt { color: var(--danger); font-weight: 600; }
+  .bill-detail-empty { font-size: 12.5px; color: var(--text-3); }
   .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 20px; }
   .pager .info { font-size: 12.5px; color: var(--text-3); margin-right: auto; }
   .pager button {
@@ -384,18 +399,60 @@ async function loadBalance() {
   }
 }
 
+// 账单明细展开：点击行切换显示 bill_item 明细
+let billDetailMap = {};
+function billResSummary(b) {
+  const items = b.items || [];
+  if (items.length) {
+    return items.map(i => esc(i.item_name || i.item_key) + '×' + i.quantity).join('；');
+  }
+  return (b.cpu || 0) + 'C / ' + (b.memory || 0) + 'G' + (b.gpu_num ? ' / ' + b.gpu_num + 'GPU' : '');
+}
+function unitShort(unit) {
+  return String(unit || '').replace(/^元\//, '');
+}
+function toggleBillDetail(row, billId) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains('bill-detail-row')) {
+    row.classList.remove('open');
+    next.remove();
+    return;
+  }
+  const items = billDetailMap[billId] || [];
+  let cell;
+  if (items.length) {
+    cell = '<div class="bill-detail-items">' + items.map(i =>
+      '<span class="bill-detail-item"><b>' + esc(i.item_name || i.item_key) + '</b>' +
+      (i.option_key ? '<span class="muted">' + esc(i.option_key) + '</span>' : '') +
+      '<span>× ' + i.quantity + '</span>' +
+      '<span class="muted">' + yuan(i.unit_price_fen) + '元' + (i.unit ? '/' + esc(unitShort(i.unit)) : '') + '</span>' +
+      '<span class="amt">= ' + yuan(i.amount_fen) + '元</span></span>'
+    ).join('') + '</div>';
+  } else {
+    cell = '<span class="bill-detail-empty">该账单无明细项</span>';
+  }
+  const tr = document.createElement('tr');
+  tr.className = 'bill-detail-row';
+  tr.innerHTML = '<td colspan="8">' + cell + '</td>';
+  row.classList.add('open');
+  row.after(tr);
+}
+
 async function loadBills(page) {
   if (page) state.bills.page = page;
   const p = state.bills.page;
   try {
     const r = await api('/billing/api/my_bills?page=' + p + '&page_size=' + PAGE_SIZE);
     state.billsTotal = r.count;
+    billDetailMap = {};
     const rows = (r.bills || []).map(b => {
-      const res = (b.cpu || 0) + 'C / ' + (b.memory || 0) + 'G' + (b.gpu_num ? ' / ' + b.gpu_num + 'GPU' : '');
-      return '<tr><td class="muted">' + b.id + '</td>' +
-        '<td class="mono">' + esc(b.pod_name) + '</td>' +
+      billDetailMap[b.id] = b.items || [];
+      const res = billResSummary(b);
+      return '<tr class="bill-row" onclick="toggleBillDetail(this, ' + b.id + ')" title="点击查看扣费明细">' +
+        '<td class="muted"><span class="arrow">▶</span> ' + b.id + '</td>' +
+        '<td class="mono pod-cell">' + esc(b.pod_name || '-') + (b.namespace ? '<span class="ns">' + esc(b.namespace) + '</span>' : '') + '</td>' +
         '<td>' + esc(b.task_name || '-') + '</td>' +
-        '<td style="text-align:right" class="muted mono">' + res + '</td>' +
+        '<td style="text-align:right;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" class="muted mono" title="' + esc(res) + '">' + res + '</td>' +
         '<td style="text-align:right" class="mono">' + (b.duration_seconds ? (b.duration_seconds / 3600).toFixed(2) : '0') + 'h</td>' +
         '<td style="text-align:right" class="mono amount-minus">' + yuan(b.amount_fen) + '</td>' +
         '<td>' + statusTag(b.status) + '</td>' +

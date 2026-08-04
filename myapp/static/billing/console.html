@@ -278,6 +278,20 @@
   .mono { font-variant-numeric: tabular-nums; }
   .empty { text-align: center; padding: 60px 0; color: var(--text-3); font-size: 14px; }
 
+  /* ===== 账单行点击展开明细 ===== */
+  .bill-row { cursor: pointer; }
+  .bill-row .arrow { display: inline-block; width: 12px; color: var(--text-3); font-size: 11px; transition: transform .15s ease; }
+  .bill-row.open .arrow { transform: rotate(90deg); color: var(--primary); }
+  .bill-detail-row td { background: #f7f9fe; padding: 10px 14px 14px 36px; }
+  .bill-detail-items { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bill-detail-item {
+    display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e8ecf5;
+    border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text-2);
+  }
+  .bill-detail-item b { color: var(--text); font-weight: 600; }
+  .bill-detail-item .amt { color: var(--danger); font-weight: 600; }
+  .bill-detail-empty { font-size: 12.5px; color: var(--text-3); }
+
   .tag { display: inline-flex; align-items: center; padding: 2.5px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
   .tag-success { background: var(--success-bg); color: var(--success); }
   .tag-danger { background: var(--danger-bg); color: var(--danger); }
@@ -563,7 +577,7 @@
     </div>
     <table>
       <thead><tr>
-        <th>#</th><th>pod</th><th>任务</th><th>用户</th><th>部门</th>
+        <th>#</th><th>pod</th><th>命名空间</th><th>任务</th><th>用户</th><th>部门</th>
         <th style="text-align:right">资源</th><th style="text-align:right">时长</th>
         <th class="sortable" data-sort="amount" onclick="sortList('b','amount')" style="text-align:right">费用（元）<span class="sort-mark" id="bSortAmount"></span></th>
         <th>状态</th><th>来源</th>
@@ -672,11 +686,16 @@ X-Billing-Token: &lt;你的token&gt;
   {
     "username": "zhangsan",            <span class="cmt"># ab_user 中的用户名</span>
     "task_name": "train-resnet50",
-    "pod_name": "resnet50-x7f2k",       <span class="cmt"># 幂等键：重复推送只修正数据，不重复扣费</span>
+    "pod_name": "resnet50-x7f2k",       <span class="cmt"># 幂等键：必填，重复推送只修正数据，不重复扣费</span>
+    "namespace": "ai-train",           <span class="cmt"># 命名空间（选填）</span>
     "cpu": 4, "memory": 16,            <span class="cmt"># 资源数（核/GB）</span>
     "gpu_num": 1, "gpu_memory": 16,    <span class="cmt"># GPU 卡数 / 显存 GB</span>
     "duration_seconds": 3600,
     "amount_fen": 1234,                <span class="cmt"># 费用（分），金额以推送为准</span>
+    "items": [                         <span class="cmt"># 费用明细（选填，展示用快照，金额仍以 amount_fen 为准）</span>
+      { "item_key": "cpu", "quantity": 4 },
+      { "item_key": "GPU_l20", "option_key": "L20", "quantity": 100 }
+    ],
     "start_time": "2026-08-03 10:00:00",
     "end_time": "2026-08-03 11:00:00"
   }
@@ -698,11 +717,13 @@ X-Billing-Token: &lt;你的token&gt;   <span class="cmt"># 或管理员会话</s
       { "item_key": "GPU_l20", "quantity": 100 }   <span class="cmt"># 子型号：L20 用 100G（item_key 在 /billing/api/prices 的 children 中）</span>
     ],
     "duration_seconds": 7200,       <span class="cmt"># 时长（秒），按月价折算</span>
+    "namespace": "ai-train",        <span class="cmt"># 命名空间（选填）</span>
+    "pod_name": "resnet50-x7f2k",   <span class="cmt"># pod名（选填，不传则为空，不自动生成；传了需全局唯一）</span>
     "task_name": "手动扣费任务",
     "remark": "扣费原因"
   }
 ]</div>
-        <div class="api-tip">金额由后端按计费标准权威计算（前端传不了假金额）；pod_name 不传自动生成 manual-用户名-时间戳；逐笔容错，返回 {count, ok, failed, results[]}。旧格式（cpu/memory/gpu_num/gpu_type 字段）仍兼容，自动转换为 resources。</div>
+        <div class="api-tip">金额由后端按计费标准权威计算（前端传不了假金额）；pod_name 选填（不传为空，不自动生成，传了需全局唯一）；逐笔容错，返回 {count, ok, failed, results[]}。旧格式（cpu/memory/gpu_num/gpu_type 字段）仍兼容，自动转换为 resources。</div>
       </div>
 
       <div class="api-block">
@@ -965,6 +986,45 @@ async function loadWallets(page) {
   } catch (e) { toast('余额加载失败：' + e.message, 'error'); }
 }
 
+// 账单明细展开：点击行切换显示 bill_item 明细
+const billDetailMap = {};
+function billResSummary(b) {
+  const items = b.items || [];
+  if (items.length) {
+    return items.map(i => esc(i.item_name || i.item_key) + '×' + i.quantity).join('；');
+  }
+  return (b.cpu || 0) + 'C / ' + (b.memory || 0) + 'G' + (b.gpu_num ? ' / ' + b.gpu_num + 'GPU' : '');
+}
+function unitShort(unit) {
+  return String(unit || '').replace(/^元\//, '');
+}
+function toggleBillDetail(row, billId) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains('bill-detail-row')) {
+    row.classList.remove('open');
+    next.remove();
+    return;
+  }
+  const items = billDetailMap[billId] || [];
+  let cell;
+  if (items.length) {
+    cell = '<div class="bill-detail-items">' + items.map(i =>
+      '<span class="bill-detail-item"><b>' + esc(i.item_name || i.item_key) + '</b>' +
+      (i.option_key ? '<span class="muted">' + esc(i.option_key) + '</span>' : '') +
+      '<span>× ' + i.quantity + '</span>' +
+      '<span class="muted">' + yuan(i.unit_price_fen) + '元' + (i.unit ? '/' + esc(unitShort(i.unit)) : '') + '</span>' +
+      '<span class="amt">= ' + yuan(i.amount_fen) + '元</span></span>'
+    ).join('') + '</div>';
+  } else {
+    cell = '<span class="bill-detail-empty">该账单无明细项（外部推送未传 items 时只保留汇总）</span>';
+  }
+  const tr = document.createElement('tr');
+  tr.className = 'bill-detail-row';
+  tr.innerHTML = '<td colspan="13">' + cell + '</td>';
+  row.classList.add('open');
+  row.after(tr);
+}
+
 async function loadBills(page) {
   if (page) state.bills.page = page;
   const s = state.bills;
@@ -978,17 +1038,20 @@ async function loadBills(page) {
     if ($('bEnd').value) params.set('end_time', $('bEnd').value);
     const r = await api('/billing/api/admin/bills?' + params);
     const rows = r.bills.map(b => {
-      const res = (b.cpu || 0) + 'C / ' + (b.memory || 0) + 'G' + (b.gpu_num ? ' / ' + b.gpu_num + 'GPU' : '');
+      billDetailMap[b.id] = b.items || [];
+      const res = billResSummary(b);
       const canReverse = b.source === 'manual' && b.status === 'settled';
       const opCell = canReverse
-        ? '<button class="action-btn" onclick="reverseBill(' + b.id + ', \'' + esc(b.pod_name).replace(/'/g, "\\'") + '\', ' + (b.amount_fen || 0) + ')">撤销</button>'
+        ? '<button class="action-btn" onclick="event.stopPropagation(); reverseBill(' + b.id + ', \'' + esc(b.pod_name).replace(/'/g, "\\'") + '\', ' + (b.amount_fen || 0) + ')">撤销</button>'
         : '<span class="muted">-</span>';
-      return '<tr><td class="muted">' + b.id + '</td>' +
-        '<td class="mono">' + esc(b.pod_name) + '</td>' +
+      return '<tr class="bill-row" onclick="toggleBillDetail(this, ' + b.id + ')" title="点击查看扣费明细">' +
+        '<td class="muted"><span class="arrow">▶</span> ' + b.id + '</td>' +
+        '<td class="mono">' + esc(b.pod_name || '-') + '</td>' +
+        '<td>' + esc(b.namespace || '-') + '</td>' +
         '<td>' + esc(b.task_name || '-') + '</td>' +
         '<td>' + esc(b.username || '-') + '</td>' +
         '<td><span class="org-chip">' + esc(b.org || '-') + '</span></td>' +
-        '<td style="text-align:right" class="muted mono">' + res + '</td>' +
+        '<td style="text-align:right;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" class="muted mono" title="' + esc(res) + '">' + res + '</td>' +
         '<td style="text-align:right" class="mono">' + (b.duration_seconds ? (b.duration_seconds / 3600).toFixed(2) : '0') + 'h</td>' +
         '<td style="text-align:right" class="mono amount-minus">' + yuan(b.amount_fen) + '</td>' +
         '<td>' + statusTag(b.status) + '</td>' +
@@ -996,7 +1059,7 @@ async function loadBills(page) {
         '<td class="muted">' + esc(b.created_on) + '</td>' +
         '<td>' + opCell + '</td></tr>';
     }).join('');
-    $('billBody').innerHTML = rows || '<tr><td colspan="12" class="empty">暂无费用明细</td></tr>';
+    $('billBody').innerHTML = rows || '<tr><td colspan="13" class="empty">暂无费用明细</td></tr>';
     $('badgeBill').textContent = r.count;
     renderPager('b', s.page, r.count, s.pageSize, 'loadBills');
     updateSortArrows('b');
@@ -1321,10 +1384,10 @@ function unitQuantity(unit) {
   const m = String(unit || '').match(/元\/([^/]+)\/月/);
   return m ? m[1] : '';
 }
-// 动态列模板：用户 + 每个计费项 + 时长 + 金额 + 任务名 + 删除
+// 动态列模板：用户 + 每个计费项 + 时长 + 金额 + 命名空间 + Pod名 + 任务名 + 删除
 function deductCols() {
   const itemCols = (state.items || []).map(it => it.item_type === 'model' ? '132px' : '92px').join(' ');
-  return 'minmax(150px,170px) ' + itemCols + ' 76px 92px 1fr 26px';
+  return 'minmax(150px,170px) ' + itemCols + ' 76px 92px 110px 130px 1fr 26px';
 }
 // 表头：显示每个计费项名称与单位
 function renderDeductHead() {
@@ -1340,6 +1403,8 @@ function renderDeductHead() {
   });
   h += '<div class="dt-col">时长<br><span class="muted" style="font-size:11px">小时</span></div>' +
        '<div class="dt-col" style="text-align:right">金额<br><span class="muted" style="font-size:11px">元</span></div>' +
+       '<div class="dt-col">命名空间<br><span class="muted" style="font-size:11px">选填</span></div>' +
+       '<div class="dt-col">Pod名<br><span class="muted" style="font-size:11px">选填</span></div>' +
        '<div class="dt-col">任务名</div><div></div>';
   $('dtHead').innerHTML = h;
   $('dtHead').style.gridTemplateColumns = deductCols();
@@ -1374,9 +1439,11 @@ function addDeductRow() {
       html += '<input class="input" id="dtQ' + n + '_' + esc(it.item_key) + '" type="number" min="0" step="0.1" placeholder="0" oninput="calcDeductRow(' + n + ')">';
     }
   });
-  // 时长 / 金额 / 任务名 / 删除
+  // 时长 / 金额 / 命名空间 / Pod名 / 任务名 / 删除
   html += '<input class="input" id="dtH' + n + '" type="number" min="0" step="0.5" placeholder="0" oninput="calcDeductRow(' + n + ')">' +
       '<div class="dt-amount" id="dtCalc' + n + '" title="">0.00</div>' +
+      '<input class="input" id="dtNs' + n + '" placeholder="如 ai-train">' +
+      '<input class="input" id="dtP' + n + '" placeholder="如 resnet50-x7f2k">' +
       '<input class="input" id="dtT' + n + '" placeholder="任务名">' +
       '<button class="btn btn-ghost btn-sm dt-del" title="删除此行" onclick="this.parentElement.remove()">✕</button>';
   row.innerHTML = html;
@@ -1440,6 +1507,8 @@ async function doDeduct() {
       username: u,
       resources,
       duration_seconds: Math.round(hours * 3600),
+      namespace: ($('dtNs' + i) ? $('dtNs' + i).value : '').trim(),
+      pod_name: ($('dtP' + i) ? $('dtP' + i).value : '').trim(),
       task_name: (tEl ? tEl.value : '').trim(),
       remark,
     });

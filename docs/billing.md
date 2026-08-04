@@ -12,7 +12,8 @@
 
 | 表 | 说明 |
 |---|---|
-| `bill` | 费用明细，一个 pod 一条，`pod_name` 唯一（幂等键） |
+| `bill` | 费用明细，一个 pod 一条；`pod_name` 推送端必填（幂等键）、手动扣费选填（为空存 NULL）；`namespace` 命名空间 |
+| `bill_item` | 账单明细快照：每个计费项一行（数量 × 单价快照 = 金额），手动扣费自动生成，推送可传 `items` 可选生成 |
 | `wallet` | 用户钱包余额，单位**分**（整数，避免浮点误差） |
 | `account_log` | 资金流水：充值/消费/转账双向审计（transfer_out + transfer_in） |
 
@@ -36,6 +37,7 @@ Content-Type: application/json
     "username": "zhangsan",
     "task_name": "train-resnet50",
     "pod_name": "resnet50-x7f2k",
+    "namespace": "ai-train",
     "run_id": "argo-xxx",
     "cpu": 4,
     "memory": 16,
@@ -43,6 +45,10 @@ Content-Type: application/json
     "gpu_memory": 16,
     "duration_seconds": 3600,
     "amount_fen": 1234,
+    "items": [
+      {"item_key": "cpu", "quantity": 4},
+      {"item_key": "GPU_l20", "option_key": "L20", "quantity": 100}
+    ],
     "start_time": "2026-08-03 10:00:00",
     "end_time": "2026-08-03 11:00:00"
   }
@@ -53,8 +59,10 @@ Content-Type: application/json
 |---|---|---|
 | `pod_name` | 是 | pod 名，**幂等去重键**，重复推送只修正数据不重复扣费 |
 | `username` | 是 | 归属用户名（平台 ab_user 中的 username） |
-| `amount_fen` | 是 | 费用金额（分） |
+| `amount_fen` | 是 | 费用金额（分），金额以推送值为准 |
 | `cpu` `memory` `gpu_num` `gpu_memory` | 否 | 资源数：cpu核数、内存GB、GPU卡数、显存GB |
+| `items` | 否 | 费用明细（展示用快照）：`[{item_key, option_key, quantity}]`，按当前单价算价写入 `bill_item`；未知计费项报 `error`；不传则账单无明细只保留汇总 |
+| `namespace` | 否 | 命名空间 |
 | `duration_seconds` | 否 | 运行时长（秒） |
 | `start_time` `end_time` | 否 | 运行起止时间 |
 
@@ -93,14 +101,14 @@ GET /billing/api/list?username=xxx&pod_name=yyy&start_time=2026-08-01&end_time=2
 | `POST /billing/api/recharge` | 管理员会话或 token | `{"username":"zhangsan","amount_fen":10000,"remark":"..."}` 充值 |
 | `POST /billing/api/transfer` | 管理员会话或 token | `{"from_username":"a","to_username":"b","amount_fen":100,"remark":"..."}` 转账（双向流水） |
 | `GET /billing/api/my_balance` | 登录用户 | 我的余额（含 `status`：normal/overdue/blocked，及 SQL 聚合的累计消费/充值/退款） |
-| `GET /billing/api/my_bills` | 登录用户 | 我的费用明细（支持 `page`/`page_size` 分页） |
+| `GET /billing/api/my_bills` | 登录用户 | 我的费用明细（支持 `page`/`page_size` 分页，每条含 `items` 明细快照与 `namespace`） |
 | `GET /billing/api/my_logs` | 登录用户 | 我的资金流水（支持 `page`/`page_size` 分页） |
 | `GET /billing/api/admin/stats` | 管理员或 token | 平台汇总：用户/部门数、总余额、累计充值消费、今日消费、部门消费排行 `org_consume`、组织树 `centers` |
 | `GET /billing/api/admin/wallets` | 管理员或 token | 全部用户余额（SQL 分页+排序：`page/page_size/sort_by/order`，`sort_by` 支持 balance/username/org/updated；`username` 模糊搜索；`center` 按中心筛选） |
 | `GET /billing/api/admin/bills` | 管理员或 token | 全部费用明细（筛选+分页+排序，`sort_by` 支持 amount/created_on，`center` 按中心筛选） |
 | `GET /billing/api/admin/logs` | 管理员或 token | 全部资金流水（筛选+分页+排序，`sort_by` 支持 amount/type/created_on） |
 | `GET /billing/api/users` | 管理员或 token | 搜索 ab_user 用户（`?keyword=xxx`，充值/转账选择用户用） |
-| `POST /billing/api/deduct` | 管理员或 token | 手动扣费，**支持单个对象或数组批量**：`{"username":"a","amount_fen":100,"remark":"...","task_name":"...","pod_name":"选填"}`；逐笔容错，返回 `{count, ok, failed, results[]}`；自动生成 `manual-用户名-时间戳` 的 pod_name（重复会拒绝）；写 bill 账本（source=manual）+ consume 流水 |
+| `POST /billing/api/deduct` | 管理员或 token | 手动扣费，**支持单个对象或数组批量**：`{"username":"a","resources":[...],"duration_seconds":3600,"remark":"...","task_name":"...","namespace":"选填","pod_name":"选填"}`；`pod_name` 选填（为空存 NULL 不自动生成，填写需全局唯一）；逐笔容错，返回 `{count, ok, failed, results[]}`；写 bill 账本（source=manual）+ bill_item 明细快照 + consume 流水 |
 | `GET /billing/api/admin/export` | 管理员会话 | CSV 导出（`?kind=bills|logs` + 同列表筛选参数，`limit` 默认 10 万可调，带 BOM 供 Excel 识别中文） |
 | `POST /billing/api/admin/bill/<id>/reverse` | 管理员会话 | 撤销手动账单（回退余额+refund 流水，状态置 reversed；外部账单不可撤，由推送修正） |
 | `POST /billing/api/admin/log/<id>/reverse` | 管理员会话 | 冲正流水：recharge 扣回 / transfer_out 双向撤销（转入扣回+转出退回，关联 transfer_in 一并标记） |
@@ -116,8 +124,8 @@ GET /billing/api/list?username=xxx&pod_name=yyy&start_time=2026-08-01&end_time=2
 
 **计费中心**为顶级菜单（所有登录用户可见），子项按角色区分：
 
-- 管理员：**计费控制台**（`/billing/console`）——统计卡片、**组织架构树**（org 按 `-` 拆分为"中心-部门"两级，点中心展开部门、点部门行下内联展开成员/明细/流水）、余额列表/费用明细/资金流水（按中心筛选 + **分页（10/20/50/100 每页）** + **表头点击排序** + CSV 导出）、充值/扣费（单笔/批量）/转账（模态框，可搜索 ab_user 用户）、**账单撤销/流水冲正**（操作列按钮+确认框，审计留痕）
-- 所有用户：**我的账单**（`/billing/my`）——余额大卡片、欠费状态提示（normal/overdue/blocked）、累计消费/充值/退款统计、我的明细与流水（分页）
+- 管理员：**计费控制台**（`/billing/console`）——统计卡片、**组织架构树**（org 按 `-` 拆分为"中心-部门"两级，点中心展开部门、点部门行下内联展开成员/明细/流水）、余额列表/费用明细/资金流水（按中心筛选 + **分页（10/20/50/100 每页）** + **表头点击排序** + CSV 导出）、充值/扣费（单笔/批量，**每行可填命名空间与 Pod 名**，Pod 名选填为空）/转账（模态框，可搜索 ab_user 用户）、**账单撤销/流水冲正**（操作列按钮+确认框，审计留痕）
+- 所有用户：**我的账单**（`/billing/my`）——余额大卡片、欠费状态提示（normal/overdue/blocked）、累计消费/充值/退款统计、我的明细与流水（分页）；**费用明细行点击展开**查看每条收费项的扣费情况（名称×数量×单价=金额）
 
 ## 数据表
 

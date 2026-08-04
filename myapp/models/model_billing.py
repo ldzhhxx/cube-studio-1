@@ -17,7 +17,8 @@ metadata = Model.metadata
 class Bill(Model, MyappModelBase):
     __tablename__ = 'bill'
     id = Column(Integer, primary_key=True)
-    pod_name = Column(String(200), nullable=False, unique=True)   # pod名，唯一去重键
+    pod_name = Column(String(200), unique=True)                   # pod名：推送幂等键（必填）；手动扣费选填，为空存 NULL
+    namespace = Column(String(200), default='')                   # 命名空间（手动扣费/推送可选）
     task_name = Column(String(200), default='')                   # 任务名
     run_id = Column(String(200), default='')                      # 关联的平台运行id（可选）
     username = Column(String(100), default='')                    # 归属用户名
@@ -119,6 +120,7 @@ class BillItem(Model, MyappModelBase):
     option_key = Column(String(50), default='')                  # 型号（型号型）
     quantity = Column(Float, default=0)                          # 数量
     unit_price_fen = Column(Integer, default=0)                  # 单价快照（分/单位/月）
+    unit = Column(String(50), default='')                        # 单位快照（如 元/GB/月）
     amount_fen = Column(Integer, default=0)                      # 该项费用（分）
     created_on = Column(DateTime, default=datetime.datetime.now, nullable=False)
 
