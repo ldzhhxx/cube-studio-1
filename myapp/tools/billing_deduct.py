@@ -135,14 +135,22 @@ def parse_start_time(value):
 
 def billing_baseline(snap, start_time):
     """起算基数（小时）：任务在开始收费时间时刻已运行的时长。
-    口径：start 之前最后一条快照的 duration（start 之后的增量才计费）。
+    口径：start 之前【最后一条】快照的 duration = start 时刻的累计时长，start 之后的增量才计费。
+
     返回 (baseline, in_range)：
-      in_range=False = 任务最新快照仍在 start 之前（任务在收费开始前已结束，本次不收费）
-      start 前无快照 = 任务在 start 后创建，baseline=0 全部计费
-      未配置开始收费时间 = baseline=0（从任务创建起全部计费）"""
+      - start_time 未配置                      → (0, True)  从任务创建起全部计费
+      - 最新快照 update_at 为 NULL              → (0, False) 无法判定计费范围，跳过
+      - 最新快照仍在 start 之前                 → (0, False) 任务在收费开始前已结束，不收费
+      - start 前无快照（任务在 start 后创建）    → (0, True)  全部计费
+      - start 前最后一条快照 duration 无法解析   → (0, False) 无法确定起算基数，跳过（宁可漏收，不可多收）
+
+    注意：start 前的快照缺口（扫描漏天）会导致起算基数偏小、最多多收 1-2 天，
+    这是天粒度快照的固有限制；快照本身数据异常时宁可跳过也不多收。"""
     if start_time is None:
         return 0.0, True
-    if snap.update_at and snap.update_at < start_time:
+    if snap.update_at is None:
+        return 0.0, False
+    if snap.update_at < start_time:
         return 0.0, False
     row = db.session.query(PodInfoHistoryV2).filter(
         PodInfoHistoryV2.pod_uid == snap.pod_uid,
@@ -151,9 +159,10 @@ def billing_baseline(snap, start_time):
     if not row:
         return 0.0, True
     try:
-        return float(str(row.duration or '').strip() or 0), True
+        return float(str(row.duration or '').strip()), True
     except Exception:
-        return 0.0, True
+        # 有 start 前的快照但 duration 无法解析：无法确定起点，跳过（多收不可逆）
+        return 0.0, False
 
 
 def latest_snapshot(pod_uid, for_update=False):
