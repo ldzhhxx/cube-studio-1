@@ -312,6 +312,8 @@
   <div class="tabs">
     <div class="tab active" data-tab="bill" onclick="switchTab('bill')"><svg class="ico ico-sm"><use href="#i-file"/></svg>费用明细 <span class="count-badge" id="badgeBill">0</span></div>
     <div class="tab" data-tab="log" onclick="switchTab('log')"><svg class="ico ico-sm"><use href="#i-list"/></svg>资金流水 <span class="count-badge" id="badgeLog">0</span></div>
+    <div class="tab" data-tab="deduct" onclick="switchTab('deduct')"><svg class="ico ico-sm"><use href="#i-file"/></svg>我的扣费单 <span class="count-badge" id="badgeDeduct">0</span></div>
+    <div class="tab" data-tab="pods" onclick="switchTab('pods')"><svg class="ico ico-sm"><use href="#i-monitor"/></svg>我的Pod记录</div>
   </div>
 
   <div id="panel-bill">
@@ -328,6 +330,53 @@
       <tbody id="logBody"></tbody>
     </table>
     <div class="pager"><span class="info" id="lInfo"></span><button onclick="logPage(-1)">‹</button><span id="lPages"></span><button onclick="logPage(1)">›</button></div>
+  </div>
+
+  <!-- 我的扣费单（快照自动扣费） -->
+  <div id="panel-deduct" style="display:none">
+    <div style="margin-bottom:10px">
+      <select id="deductStatus" onchange="loadMyDeduct(1)">
+        <option value="">全部状态</option>
+        <option value="draft">待推送</option>
+        <option value="pushed">待确认（推送后超时自动扣费）</option>
+        <option value="disputed">有异议</option>
+        <option value="settled">已入账</option>
+        <option value="cancelled">已作废</option>
+      </select>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Pod</th><th style="text-align:right">资源规格</th><th style="text-align:right">本次时长</th><th style="text-align:right">计费区间(h)</th><th style="text-align:right">费用（元）</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody id="deductBody"></tbody>
+    </table>
+    <div class="pager"><span class="info" id="dInfo"></span><button onclick="deductPage(-1)">‹</button><span id="dPages"></span><button onclick="deductPage(1)">›</button></div>
+  </div>
+
+  <!-- 我的历史 Pod 记录 -->
+  <div id="panel-pods" style="display:none">
+    <div id="podListWrap">
+      <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <select id="podStatus"><option value="">全部状态</option><option value="Running">Running</option><option value="Pending">Pending</option><option value="Succeeded">Succeeded</option><option value="Failed">Failed</option></select>
+        <input id="podName" placeholder="pod名（模糊）…" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px">
+        <input id="podGpu" placeholder="显卡型号（如 L20）…" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px">
+        <input id="podCluster" placeholder="集群…" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px">
+        <input id="podStart" placeholder="开始日期 YYYY-MM-DD" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px">
+        <input id="podEnd" placeholder="结束日期 YYYY-MM-DD" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px">
+        <button onclick="loadMyPods(1)">查询</button>
+      </div>
+      <table>
+        <thead><tr><th>Pod</th><th>状态</th><th>显卡</th><th style="text-align:right">显存(G)</th><th style="text-align:right">算力(卡)</th><th style="text-align:right">内存(G)</th><th style="text-align:right">CPU(核)</th><th style="text-align:right">时长(h)</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="podBody"></tbody>
+      </table>
+      <div class="pager"><span class="info" id="pInfo"></span><button onclick="podPage(-1)">‹</button><span id="pPages"></span><button onclick="podPage(1)">›</button></div>
+    </div>
+    <div id="podDetailWrap" style="display:none">
+      <button onclick="showPodList()">← 返回任务列表</button>
+      <h3 id="podDetailTitle" style="margin:10px 0"></h3>
+      <table>
+        <thead><tr><th>#</th><th>状态</th><th style="text-align:right">显存(G)</th><th style="text-align:right">算力</th><th style="text-align:right">内存(G)</th><th style="text-align:right">CPU(核)</th><th style="text-align:right">累计时长(h)</th><th>节点</th><th>快照时间</th></tr></thead>
+        <tbody id="podDetailBody"></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -499,7 +548,9 @@ function togglePricePanel() {
 
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
-  ['bill', 'log'].forEach(t => { $('panel-' + t).style.display = t === tab ? '' : 'none'; });
+  ['bill', 'log', 'deduct', 'pods'].forEach(t => { $('panel-' + t).style.display = t === tab ? '' : 'none'; });
+  if (tab === 'deduct') loadMyDeduct(1);
+  if (tab === 'pods') loadMyPods(1);
 }
 
 const ITEM_META = {
@@ -544,6 +595,113 @@ async function loadPrices() {
   } catch (e) {
     $('priceRow').innerHTML = '<div style="padding:26px;text-align:center;color:var(--text-3)">计费标准加载失败</div>';
   }
+}
+
+// ================= 我的扣费单（快照自动扣费） =================
+async function apiPost(url, body) {
+  const resp = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+  });
+  let data = null;
+  try { data = await resp.json(); } catch (e) {}
+  if (!resp.ok || !data || data.status !== 200) throw new Error((data && data.message) || ('HTTP ' + resp.status));
+  return data.result;
+}
+const DEDUCT_STATUS = { draft: '待推送', pushed: '待确认', agreed: '已同意', settled: '已入账', disputed: '有异议', cancelled: '已作废', failed: '失败' };
+function deductStatusTag(s) {
+  const map = { draft: 'neutral', pushed: 'info', agreed: 'warning', settled: 'success', disputed: 'danger', cancelled: 'neutral', failed: 'danger' };
+  return tag(map[s] || 'neutral', DEDUCT_STATUS[s] || s || '未知');
+}
+const stateD = { page: 1 };
+async function loadMyDeduct(page) {
+  stateD.page = page;
+  try {
+    const status = $('deductStatus').value;
+    const r = await api('/billing/api/my/deduct_bills?page=' + page + '&page_size=' + PAGE_SIZE + (status ? '&status=' + status : ''));
+    $('badgeDeduct').textContent = r.count || 0;
+    if (!r.bills.length) { $('deductBody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#94a3b8">暂无扣费单</td></tr>'; $('dInfo').textContent = ''; $('dPages').innerHTML = ''; return; }
+    $('deductBody').innerHTML = r.bills.map(b => {
+      const spec = 'GPU' + (b.gpu_num || 0) + '×' + esc(b.gpu_type || '-') + ' / ' + (b.memory || 0) + 'G / ' + (b.cpu || 0) + '核';
+      let ops = '';
+      if (b.status === 'pushed') {
+        ops = '<button onclick="agreeBill(' + b.id + ')">同意</button> <button onclick="disputeBill(' + b.id + ')">质疑</button>';
+      } else if (b.status === 'disputed') {
+        ops = '<span style="color:#ef4444">处理中</span>';
+      }
+      return '<tr><td>' + b.id + '</td><td>' + esc(b.pod_name) + '</td><td style="text-align:right">' + spec + '</td>' +
+        '<td style="text-align:right">' + b.duration_hours + 'h</td><td style="text-align:right">' + (b.deduct_from_hours || 0) + ' → ' + (b.deduct_to_hours || 0) + '</td>' +
+        '<td style="text-align:right"><b>' + b.amount_yuan + '</b></td><td>' + deductStatusTag(b.status) + '</td><td>' + ops + '</td></tr>';
+    }).join('');
+    $('dInfo').textContent = '共 ' + r.count + ' 条';
+    $('dPages').innerHTML = pagination(page, r.count, 'loadMyDeduct');
+  } catch (e) { toast(e.message, 'error'); }
+}
+function deductPage(d) { loadMyDeduct(stateD.page + d); }
+
+async function agreeBill(id) {
+  if (!confirm('同意该扣费单后将立即从钱包扣款，确认同意？')) return;
+  try {
+    const r = await apiPost('/billing/api/my/deduct_bills/agree', { bill_id: id });
+    toast('已同意并扣款 ' + yuan(r.amount_fen) + ' 元', 'success');
+    loadMyDeduct(stateD.page);
+    loadBalance();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function disputeBill(id) {
+  const reason = prompt('请输入质疑理由（必填）：');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('质疑理由必填', 'error'); return; }
+  try {
+    await apiPost('/billing/api/my/deduct_bills/dispute', { bill_id: id, reason: reason.trim() });
+    toast('已提交质疑，等待管理员处理', 'success');
+    loadMyDeduct(stateD.page);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ================= 我的历史 Pod 记录 =================
+const stateP = { page: 1, podUid: '' };
+async function loadMyPods(page) {
+  stateP.page = page;
+  try {
+    const params = new URLSearchParams({ page: page, page_size: PAGE_SIZE });
+    if ($('podStatus').value) params.set('status', $('podStatus').value);
+    if ($('podName').value.trim()) params.set('pod_name', $('podName').value.trim());
+    if ($('podGpu').value.trim()) params.set('gpu_type', $('podGpu').value.trim());
+    if ($('podCluster').value.trim()) params.set('cluster', $('podCluster').value.trim());
+    if ($('podStart').value.trim()) params.set('start_time', $('podStart').value.trim());
+    if ($('podEnd').value.trim()) params.set('end_time', $('podEnd').value.trim());
+    const r = await api('/billing/api/my/pod_history?' + params);
+    if (!r.pods.length) { $('podBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:#94a3b8">暂无记录</td></tr>'; $('pInfo').textContent = ''; $('pPages').innerHTML = ''; return; }
+    $('podBody').innerHTML = r.pods.map(p =>
+      '<tr><td>' + esc(p.pod_name) + '</td><td>' + (p.status === 'Running' ? tag('success', p.status) : tag('neutral', p.status)) + '</td>' +
+      '<td>' + esc(p.gpu_type || 'CPU') + '</td><td style="text-align:right">' + p.gpu_mem_usage_gb + '</td>' +
+      '<td style="text-align:right">' + (p.gpu_usage / 100) + '</td><td style="text-align:right">' + p.mem_limit_gb + '</td>' +
+      '<td style="text-align:right">' + p.cpu_limit + '</td><td style="text-align:right">' + p.duration_hours + '</td>' +
+      '<td>' + esc(p.created_at) + '</td><td><button onclick="showPodDetail(\'' + p.pod_uid + '\')">查看快照</button></td></tr>').join('');
+    $('pInfo').textContent = '共 ' + r.count + ' 个任务';
+    $('pPages').innerHTML = pagination(page, r.count, 'loadMyPods');
+  } catch (e) { toast(e.message, 'error'); }
+}
+function podPage(d) { loadMyPods(stateP.page + d); }
+
+async function showPodDetail(podUid) {
+  try {
+    const r = await api('/billing/api/my/pod_history/detail?pod_uid=' + encodeURIComponent(podUid));
+    stateP.podUid = podUid;
+    $('podListWrap').style.display = 'none';
+    $('podDetailWrap').style.display = '';
+    $('podDetailTitle').textContent = (r.rows[0] && r.rows[0].pod_name) || podUid;
+    $('podDetailBody').innerHTML = r.rows.map(x =>
+      '<tr><td>' + x.id + '</td><td>' + (x.status === 'Running' ? tag('success', x.status) : tag('neutral', x.status)) + '</td>' +
+      '<td style="text-align:right">' + x.gpu_mem_usage_gb + '</td><td style="text-align:right">' + (x.gpu_usage / 100) + '卡</td>' +
+      '<td style="text-align:right">' + x.mem_limit_gb + '</td><td style="text-align:right">' + x.cpu_limit + '</td>' +
+      '<td style="text-align:right">' + x.duration_hours + '</td><td>' + esc(x.node_name) + '</td><td>' + esc(x.update_at) + '</td></tr>').join('');
+  } catch (e) { toast(e.message, 'error'); }
+}
+function showPodList() {
+  $('podDetailWrap').style.display = 'none';
+  $('podListWrap').style.display = '';
 }
 
 loadBalance();

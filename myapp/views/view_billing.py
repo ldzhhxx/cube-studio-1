@@ -18,10 +18,13 @@
 #   GET /billing/api/admin/logs      全部资金流水
 import datetime
 from flask import request, g, flash, redirect, jsonify, send_from_directory, Response
+from sqlalchemy import or_, and_
 from sqlalchemy.exc import IntegrityError
 
 from myapp import app, appbuilder, db, conf
-from myapp.models.model_billing import Bill, Wallet, AccountLog, PriceConfig, ItemPriceDetail, BillItem
+from myapp.models.model_billing import (Bill, Wallet, AccountLog, PriceConfig, ItemPriceDetail, BillItem,
+                                        BillingRun, BillDispute, BillWhitelist, BillingConfig,
+                                        PodInfoHistoryV2, AllNodeMemory)
 from myapp.security import MyUser
 
 logging = app.logger
@@ -1375,3 +1378,439 @@ def billing_admin_export():
     resp = Response('﻿' + buf.getvalue(), mimetype='text/csv; charset=utf-8')
     resp.headers['Content-Disposition'] = 'attachment; filename=%s' % filename
     return resp
+
+
+# ============================================================
+# 快照自动扣费（数据源 pod_info_history_v2，扣费单状态机：
+#   draft → pushed → agreed → settled；质疑 disputed；作废 cancelled；超时自动同意）
+# ============================================================
+def _run_to_dict(run):
+    return {
+        'id': run.id,
+        'execute_type': run.execute_type,
+        'operator': run.operator,
+        'generated_count': run.generated_count,
+        'skipped_no_delta': run.skipped_no_delta,
+        'skipped_not_running': run.skipped_not_running,
+        'skipped_below_min': run.skipped_below_min,
+        'skipped_whitelist': run.skipped_whitelist,
+        'skipped_no_user': run.skipped_no_user,
+        'skipped_fallback_gpu': run.skipped_fallback_gpu,
+        'remark': run.remark or '',
+        'created_on': run.created_on.strftime('%Y-%m-%d %H:%M:%S') if run.created_on else '',
+    }
+
+
+def _deduct_bill_to_dict(b):
+    disputes = db.session.query(BillDispute).filter_by(bill_id=b.id).order_by(BillDispute.id.desc()).all()
+    return {
+        'id': b.id,
+        'pod_name': b.pod_name or '',
+        'pod_uid': b.pod_uid or '',
+        'namespace': b.namespace or '',
+        'username': b.username or '',
+        'org': b.org or '',
+        'cpu': b.cpu or 0,
+        'memory': b.memory or 0,
+        'gpu_num': b.gpu_num or 0,
+        'gpu_type': b.gpu_type or '',
+        'gpu_memory': b.gpu_memory or 0,
+        'duration_seconds': b.duration_seconds or 0,
+        'duration_hours': round((b.duration_seconds or 0) / 3600.0, 2),
+        'deduct_from_hours': b.deduct_from_hours,
+        'deduct_to_hours': b.deduct_to_hours,
+        'amount_fen': b.amount_fen or 0,
+        'amount_yuan': round((b.amount_fen or 0) / 100.0, 2),
+        'status': b.status,
+        'billing_run_id': b.billing_run_id,
+        'start_time': b.start_time.strftime('%Y-%m-%d %H:%M:%S') if b.start_time else '',
+        'end_time': b.end_time.strftime('%Y-%m-%d %H:%M:%S') if b.end_time else '',
+        'created_on': b.created_on.strftime('%Y-%m-%d %H:%M:%S') if b.created_on else '',
+        'items': [{
+            'item_key': i.item_key, 'item_name': i.item_name, 'option_key': i.option_key,
+            'quantity': i.quantity, 'unit_price_fen': i.unit_price_fen, 'unit': i.unit or '',
+            'amount_fen': i.amount_fen,
+        } for i in db.session.query(BillItem).filter_by(bill_id=b.id).all()],
+        'disputes': [{
+            'id': d.id, 'reason': d.reason or '', 'status': d.status,
+            'resolution': d.resolution or '', 'resolution_note': d.resolution_note or '',
+            'operator': d.operator or '',
+            'created_on': d.created_on.strftime('%Y-%m-%d %H:%M:%S') if d.created_on else '',
+            'processed_on': d.processed_on.strftime('%Y-%m-%d %H:%M:%S') if d.processed_on else '',
+        } for d in disputes],
+    }
+
+
+# ---- 管理员端 ----
+@app.route('/billing/api/admin/deduct/run', methods=['POST'])
+def billing_admin_deduct_run():
+    """手动执行一轮扣费：生成 draft 扣费单（幂等：增量=0 的任务自动跳过）"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    from myapp.tools.billing_deduct import run_deduct
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        run = run_deduct(operator=current_operator(), execute_type='manual',
+                         remark=str(data.get('remark', '') or '')[:200])
+    except ValueError as e:
+        return err_response(str(e))
+    return ok_response(_run_to_dict(run))
+
+
+@app.route('/billing/api/admin/deduct/runs', methods=['GET'])
+def billing_admin_deduct_runs():
+    """扣费批次列表"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    page_size = min(max(int(request.args.get('page_size', 20) or 20), 1), 200)
+    query = db.session.query(BillingRun)
+    total = query.count()
+    runs = query.order_by(BillingRun.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return ok_response({'count': total, 'page': page, 'page_size': page_size,
+                        'runs': [_run_to_dict(r) for r in runs]})
+
+
+@app.route('/billing/api/admin/deduct/bills', methods=['GET'])
+def billing_admin_deduct_bills():
+    """扣费单列表（管理员）：run_id / status / username / keyword 筛选"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    query = db.session.query(Bill).filter_by(source='history')
+    run_id = safe_int(request.args.get('run_id'))
+    if run_id:
+        query = query.filter_by(billing_run_id=run_id)
+    status = request.args.get('status', '').strip()
+    if status:
+        query = query.filter_by(status=status)
+    username = request.args.get('username', '').strip()
+    if username:
+        query = query.filter(Bill.username.like('%' + username + '%'))
+    keyword = request.args.get('keyword', '').strip()
+    if keyword:
+        query = query.filter(or_(Bill.pod_name.like('%' + keyword + '%'),
+                                 Bill.pod_uid.like('%' + keyword + '%')))
+    total = query.count()
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    page_size = min(max(int(request.args.get('page_size', 20) or 20), 1), 200)
+    bills = query.order_by(Bill.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return ok_response({'count': total, 'page': page, 'page_size': page_size,
+                        'bills': [_deduct_bill_to_dict(b) for b in bills]})
+
+
+@app.route('/billing/api/admin/deduct/push', methods=['POST'])
+def billing_admin_deduct_push():
+    """推送扣费单 draft → pushed：bill_ids 多选；不传或传空 = 一键全推当前所有 draft"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    bill_ids = [safe_int(i) for i in (data.get('bill_ids') or []) if safe_int(i) > 0]
+    query = db.session.query(Bill).filter_by(source='history', status='draft')
+    if bill_ids:
+        query = query.filter(Bill.id.in_(bill_ids))
+    bills = query.all()
+    now = datetime.datetime.now()
+    for b in bills:
+        b.status = 'pushed'
+        b.updated_on = now
+    db.session.commit()
+    return ok_response({'count': len(bills)})
+
+
+@app.route('/billing/api/admin/deduct/dispute/resolve', methods=['POST'])
+def billing_admin_deduct_dispute_resolve():
+    """处理质疑：
+    adjust 改价重推（new_amount_fen 指定新金额，回到 draft）
+    reject 驳回（按原金额直接结算入账）
+    cancel 作废（本次不扣费，指针不占用）"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    from myapp.tools.billing_deduct import settle_bill
+    data = request.get_json(force=True, silent=True) or {}
+    bill_id = safe_int(data.get('bill_id'))
+    action = str(data.get('action', '') or '').strip()
+    note = str(data.get('note', '') or '')[:500]
+    bill = db.session.query(Bill).filter_by(id=bill_id).first()
+    if not bill:
+        return err_response('bill not found')
+    dispute = db.session.query(BillDispute).filter_by(bill_id=bill_id, status='open').first()
+    if action == 'adjust':
+        new_amount = safe_int(data.get('new_amount_fen'))
+        if new_amount <= 0:
+            return err_response('new_amount_fen must be positive')
+        bill.amount_fen = new_amount
+        bill.status = 'draft'
+        bill.updated_on = datetime.datetime.now()
+    elif action == 'reject':
+        bill.status = 'agreed'
+        bill.updated_on = datetime.datetime.now()
+        db.session.flush()
+        settle_bill(bill, operator=current_operator())
+    elif action == 'cancel':
+        bill.status = 'cancelled'
+        bill.updated_on = datetime.datetime.now()
+    else:
+        return err_response('invalid action (adjust/reject/cancel)')
+    if dispute:
+        dispute.status = 'processed'
+        dispute.resolution = action
+        dispute.resolution_note = note
+        dispute.operator = current_operator()
+        dispute.processed_on = datetime.datetime.now()
+    db.session.commit()
+    return ok_response({'bill_id': bill.id, 'status': bill.status, 'amount_fen': bill.amount_fen})
+
+
+@app.route('/billing/api/admin/deduct/config', methods=['GET', 'POST'])
+def billing_admin_deduct_config():
+    """扣费规则配置读写：min_duration_minutes / month_hours / auto_settle_days / gpu_fallback / enabled"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if request.method == 'GET':
+        rows = db.session.query(BillingConfig).all()
+        return ok_response({r.cfg_key: r.cfg_value for r in rows})
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    allowed = ('min_duration_minutes', 'month_hours', 'auto_settle_days', 'gpu_fallback', 'enabled')
+    for k, v in data.items():
+        if k not in allowed:
+            continue
+        row = db.session.query(BillingConfig).filter_by(cfg_key=k).first()
+        if not row:
+            row = BillingConfig(cfg_key=k)
+            db.session.add(row)
+        row.cfg_value = str(v)
+        row.updated_by = current_operator()
+    db.session.commit()
+    rows = db.session.query(BillingConfig).all()
+    return ok_response({r.cfg_key: r.cfg_value for r in rows})
+
+
+@app.route('/billing/api/admin/deduct/whitelist', methods=['GET'])
+def billing_admin_deduct_whitelist():
+    """白名单列表"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    rows = db.session.query(BillWhitelist).order_by(BillWhitelist.id.desc()).all()
+    return ok_response([{
+        'id': w.id, 'dimension': w.dimension, 'value': w.value,
+        'note': w.note or '', 'enabled': w.enabled,
+        'created_by': w.created_by or '',
+        'created_on': w.created_on.strftime('%Y-%m-%d %H:%M:%S') if w.created_on else '',
+    } for w in rows])
+
+
+@app.route('/billing/api/admin/deduct/whitelist/add', methods=['POST'])
+def billing_admin_deduct_whitelist_add():
+    """添加白名单：dimension ∈ org 部门 / user 用户 / cluster 集群"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    dimension = str(data.get('dimension', '') or '').strip()
+    value = str(data.get('value', '') or '').strip()
+    if dimension not in ('org', 'user', 'cluster') or not value:
+        return err_response('dimension(org/user/cluster) and value required')
+    if db.session.query(BillWhitelist).filter_by(dimension=dimension, value=value).first():
+        return err_response('白名单 %s:%s 已存在' % (dimension, value))
+    w = BillWhitelist(dimension=dimension, value=value,
+                      note=str(data.get('note', '') or '')[:200],
+                      enabled=1 if safe_int(data.get('enabled', 1)) else 0,
+                      created_by=current_operator())
+    db.session.add(w)
+    db.session.commit()
+    return ok_response({'id': w.id})
+
+
+@app.route('/billing/api/admin/deduct/whitelist/toggle', methods=['POST'])
+def billing_admin_deduct_whitelist_toggle():
+    """启用/停用白名单"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    w = db.session.query(BillWhitelist).filter_by(id=safe_int(data.get('id'))).first()
+    if not w:
+        return err_response('whitelist not found')
+    w.enabled = 0 if (w.enabled or 0) else 1
+    db.session.commit()
+    return ok_response({'id': w.id, 'enabled': w.enabled})
+
+
+@app.route('/billing/api/admin/deduct/whitelist/delete', methods=['POST'])
+def billing_admin_deduct_whitelist_delete():
+    """删除白名单"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    w = db.session.query(BillWhitelist).filter_by(id=safe_int(data.get('id'))).first()
+    if not w:
+        return err_response('whitelist not found')
+    db.session.delete(w)
+    db.session.commit()
+    return ok_response({'id': data.get('id')})
+
+
+# ---- 用户端 ----
+@app.route('/billing/api/my/deduct_bills', methods=['GET'])
+def billing_my_deduct_bills():
+    """我的扣费单（history 来源）：status 筛选"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    query = db.session.query(Bill).filter_by(source='history', user_id=g.user.id)
+    status = request.args.get('status', '').strip()
+    if status:
+        query = query.filter_by(status=status)
+    total = query.count()
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    page_size = min(max(int(request.args.get('page_size', 20) or 20), 1), 200)
+    bills = query.order_by(Bill.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return ok_response({'count': total, 'page': page, 'page_size': page_size,
+                        'bills': [_deduct_bill_to_dict(b) for b in bills]})
+
+
+@app.route('/billing/api/my/deduct_bills/agree', methods=['POST'])
+def billing_my_deduct_bills_agree():
+    """用户同意扣费单：pushed → agreed → 立即结算入账"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    from myapp.tools.billing_deduct import settle_bill
+    data = request.get_json(force=True, silent=True) or {}
+    bill = db.session.query(Bill).filter_by(
+        id=safe_int(data.get('bill_id')), user_id=g.user.id, status='pushed').first()
+    if not bill:
+        return err_response('bill not found or not pushed')
+    bill.status = 'agreed'
+    bill.updated_on = datetime.datetime.now()
+    db.session.flush()
+    settle_bill(bill, operator=g.user.username)
+    return ok_response({'bill_id': bill.id, 'status': bill.status,
+                        'amount_fen': bill.amount_fen})
+
+
+@app.route('/billing/api/my/deduct_bills/dispute', methods=['POST'])
+def billing_my_deduct_bills_dispute():
+    """用户质疑扣费单：pushed → disputed + 质疑记录（reason 必填）"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    data = request.get_json(force=True, silent=True) or {}
+    reason = str(data.get('reason', '') or '').strip()
+    if not reason:
+        return err_response('reason required')
+    bill = db.session.query(Bill).filter_by(
+        id=safe_int(data.get('bill_id')), user_id=g.user.id, status='pushed').first()
+    if not bill:
+        return err_response('bill not found or not pushed')
+    if db.session.query(BillDispute).filter_by(bill_id=bill.id, status='open').first():
+        return err_response('该扣费单已有待处理质疑')
+    bill.status = 'disputed'
+    bill.updated_on = datetime.datetime.now()
+    db.session.add(BillDispute(bill_id=bill.id, user_id=g.user.id, reason=reason))
+    db.session.commit()
+    return ok_response({'bill_id': bill.id, 'status': bill.status})
+
+
+@app.route('/billing/api/my/pod_history', methods=['GET'])
+def billing_my_pod_history():
+    """我的历史 Pod 记录：按 pod_uid 聚合最新快照，任意组合筛选
+    筛选：status / pod_name 模糊 / cluster / node_name 模糊 / gpu_type / start_time / end_time（update_at）"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    base = db.session.query(PodInfoHistoryV2.pod_uid,
+                            db.func.max(PodInfoHistoryV2.update_at).label('max_update')).filter_by(
+        username=g.user.username)
+    status = request.args.get('status', '').strip()
+    if status:
+        base = base.filter(PodInfoHistoryV2.status == status)
+    pod_name = request.args.get('pod_name', '').strip()
+    if pod_name:
+        base = base.filter(PodInfoHistoryV2.pod_name.like('%' + pod_name + '%'))
+    cluster = request.args.get('cluster', '').strip()
+    if cluster:
+        base = base.filter(PodInfoHistoryV2.cluster == cluster)
+    node = request.args.get('node_name', '').strip()
+    if node:
+        base = base.filter(PodInfoHistoryV2.node_name.like('%' + node + '%'))
+    gpu_type = request.args.get('gpu_type', '').strip()
+    if gpu_type:
+        base = base.outerjoin(AllNodeMemory, AllNodeMemory.node_name == PodInfoHistoryV2.node_name)
+        base = base.filter(AllNodeMemory.gpu_type == gpu_type)
+    start_time = request.args.get('start_time', '').strip()
+    if start_time:
+        base = base.filter(PodInfoHistoryV2.update_at >= (start_time + ' 00:00:00' if len(start_time) == 10 else start_time))
+    end_time = request.args.get('end_time', '').strip()
+    if end_time:
+        base = base.filter(PodInfoHistoryV2.update_at <= (end_time + ' 23:59:59' if len(end_time) == 10 else end_time))
+    sub = base.group_by(PodInfoHistoryV2.pod_uid).subquery()
+    q = db.session.query(PodInfoHistoryV2).join(
+        sub, and_(PodInfoHistoryV2.pod_uid == sub.c.pod_uid,
+                  PodInfoHistoryV2.update_at == sub.c.max_update))
+    total = q.count()
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    page_size = min(max(int(request.args.get('page_size', 20) or 20), 1), 200)
+    rows = q.order_by(PodInfoHistoryV2.update_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    # 批量关联显卡型号
+    nodes = {n.node_name: n.gpu_type for n in db.session.query(AllNodeMemory).all()}
+    result = [{
+        'pod_uid': r.pod_uid, 'pod_name': r.pod_name or '', 'namespace': r.k8s_namespace or '',
+        'status': r.status or '', 'node_name': r.node_name or '', 'cluster': r.cluster or '',
+        'gpu_type': nodes.get(r.node_name) or '',
+        'gpu_mem_usage_gb': r.gpu_mem_usage_gb or 0, 'gpu_usage': r.gpu_usage or 0,
+        'mem_limit_gb': r.mem_limit_gb or 0, 'cpu_limit': r.cpu_limit or 0,
+        'duration_hours': _parse_duration_hours(r.duration),
+        'created_at': r.created_at.strftime('%Y-%m-%d %H:%M:%S') if r.created_at else '',
+        'update_at': r.update_at.strftime('%Y-%m-%d %H:%M:%S') if r.update_at else '',
+        'label': r.label or '',
+    } for r in rows]
+    return ok_response({'count': total, 'page': page, 'page_size': page_size, 'pods': result})
+
+
+@app.route('/billing/api/my/pod_history/detail', methods=['GET'])
+def billing_my_pod_history_detail():
+    """某任务按天快照明细（本人）"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    pod_uid = request.args.get('pod_uid', '').strip()
+    if not pod_uid:
+        return err_response('pod_uid required')
+    rows = db.session.query(PodInfoHistoryV2).filter_by(
+        pod_uid=pod_uid, username=g.user.username).order_by(PodInfoHistoryV2.update_at.asc()).all()
+    if not rows:
+        return err_response('record not found')
+    nodes = {n.node_name: n.gpu_type for n in db.session.query(AllNodeMemory).all()}
+    result = [{
+        'id': r.id, 'pod_uid': r.pod_uid, 'pod_name': r.pod_name or '',
+        'namespace': r.k8s_namespace or '', 'status': r.status or '',
+        'node_name': r.node_name or '', 'cluster': r.cluster or '',
+        'gpu_type': nodes.get(r.node_name) or '',
+        'gpu_mem_usage_gb': r.gpu_mem_usage_gb or 0, 'gpu_usage': r.gpu_usage or 0,
+        'mem_limit_gb': r.mem_limit_gb or 0, 'cpu_limit': r.cpu_limit or 0,
+        'duration_hours': _parse_duration_hours(r.duration),
+        'created_at': r.created_at.strftime('%Y-%m-%d %H:%M:%S') if r.created_at else '',
+        'update_at': r.update_at.strftime('%Y-%m-%d %H:%M:%S') if r.update_at else '',
+        'label': r.label or '',
+    } for r in rows]
+    return ok_response({'pod_uid': pod_uid, 'count': len(result), 'rows': result})
+
+
+def _parse_duration_hours(duration):
+    """duration 是 varchar 小时数，容错解析"""
+    try:
+        return round(float(str(duration or '').strip()), 2)
+    except Exception:
+        return 0
