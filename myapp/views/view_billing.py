@@ -100,13 +100,19 @@ def billing_menu_items():
         ],
     }
     try:
-        # 管理员另有"计费控制台"子项
+        # 管理员另有"计费控制台""扣费管理"子项
         if g.user and g.user.is_authenticated and g.user.username in conf.get('ADMIN_USER', '').split(','):
             billing['children'].insert(0, {
                 "name": 'billing-console',
                 "title": '计费控制台',
                 "menu_type": "iframe",
                 "url": '/billing/console',
+            })
+            billing['children'].insert(1, {
+                "name": 'billing-deduct',
+                "title": '扣费管理',
+                "menu_type": "iframe",
+                "url": '/billing/deduct',
             })
     except Exception as e:
         logging.warning('billing menu admin check error: %s' % e)
@@ -1229,6 +1235,14 @@ def billing_console():
     return send_from_directory(app.static_folder, 'billing/console.html')
 
 
+# 扣费管理（快照自动扣费：执行/扣费单/规则/白名单，独立页面走左侧导航）
+@app.route('/billing/deduct', methods=['GET'])
+def billing_deduct_page():
+    if not check_admin_user():
+        return err_response('no permission', 401)
+    return send_from_directory(app.static_folder, 'billing/deduct.html')
+
+
 # 我的账单（登录用户可见，只读自己的余额/明细/流水）
 @app.route('/billing/my', methods=['GET'])
 def billing_my():
@@ -1531,7 +1545,7 @@ def billing_admin_deduct_dispute_resolve():
         return err_response('admin required', 403)
     if not require_json_content():
         return err_response('Content-Type must be application/json', 415)
-    from myapp.tools.billing_deduct import settle_bill
+    from myapp.tools.billing_deduct import settle_bill, cancel_bill
     data = request.get_json(force=True, silent=True) or {}
     bill_id = safe_int(data.get('bill_id'))
     action = str(data.get('action', '') or '').strip()
@@ -1540,6 +1554,14 @@ def billing_admin_deduct_dispute_resolve():
     if not bill:
         return err_response('bill not found')
     dispute = db.session.query(BillDispute).filter_by(bill_id=bill_id, status='open').first()
+    # 质疑记录先落库（reject/cancel 内部会 commit，保证一起提交）
+    if dispute:
+        dispute.status = 'processed'
+        dispute.resolution = action
+        dispute.resolution_note = note
+        dispute.operator = current_operator()
+        dispute.processed_on = datetime.datetime.now()
+        db.session.flush()
     if action == 'adjust':
         new_amount = safe_int(data.get('new_amount_fen'))
         if new_amount <= 0:
@@ -1547,24 +1569,36 @@ def billing_admin_deduct_dispute_resolve():
         bill.amount_fen = new_amount
         bill.status = 'draft'
         bill.updated_on = datetime.datetime.now()
+        db.session.commit()
     elif action == 'reject':
         bill.status = 'agreed'
         bill.updated_on = datetime.datetime.now()
         db.session.flush()
         settle_bill(bill, operator=current_operator())
     elif action == 'cancel':
-        bill.status = 'cancelled'
-        bill.updated_on = datetime.datetime.now()
+        cancel_bill(bill, operator=current_operator())
     else:
         return err_response('invalid action (adjust/reject/cancel)')
-    if dispute:
-        dispute.status = 'processed'
-        dispute.resolution = action
-        dispute.resolution_note = note
-        dispute.operator = current_operator()
-        dispute.processed_on = datetime.datetime.now()
-    db.session.commit()
     return ok_response({'bill_id': bill.id, 'status': bill.status, 'amount_fen': bill.amount_fen})
+
+
+@app.route('/billing/api/admin/deduct/bills/cancel', methods=['POST'])
+def billing_admin_deduct_bill_cancel():
+    """作废扣费单（draft/pushed/disputed）：回退扣费指针，下次执行会重新收费"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    if not require_json_content():
+        return err_response('Content-Type must be application/json', 415)
+    from myapp.tools.billing_deduct import cancel_bill
+    data = request.get_json(force=True, silent=True) or {}
+    bill = db.session.query(Bill).filter_by(id=safe_int(data.get('bill_id'))).first()
+    if not bill:
+        return err_response('bill not found')
+    try:
+        cancel_bill(bill, operator=current_operator())
+    except ValueError as e:
+        return err_response(str(e))
+    return ok_response({'bill_id': bill.id, 'status': bill.status})
 
 
 @app.route('/billing/api/admin/deduct/config', methods=['GET', 'POST'])
@@ -1726,37 +1760,59 @@ def billing_my_deduct_bills_dispute():
     return ok_response({'bill_id': bill.id, 'status': bill.status})
 
 
-@app.route('/billing/api/my/pod_history', methods=['GET'])
-def billing_my_pod_history():
-    """我的历史 Pod 记录：按 pod_uid 聚合最新快照，任意组合筛选
-    筛选：status / pod_name 模糊 / cluster / node_name 模糊 / gpu_type / start_time / end_time（update_at）"""
-    if not g.user or not g.user.is_authenticated:
-        return err_response('please login', 401)
-    base = db.session.query(PodInfoHistoryV2.pod_uid,
-                            db.func.max(PodInfoHistoryV2.update_at).label('max_update')).filter_by(
-        username=g.user.username)
-    status = request.args.get('status', '').strip()
+def _pod_history_filters(base, args):
+    """Pod 记录公共筛选：status / pod_name 模糊 / cluster / node_name 模糊 / gpu_type / start_time / end_time"""
+    status = args.get('status', '').strip()
     if status:
         base = base.filter(PodInfoHistoryV2.status == status)
-    pod_name = request.args.get('pod_name', '').strip()
+    pod_name = args.get('pod_name', '').strip()
     if pod_name:
         base = base.filter(PodInfoHistoryV2.pod_name.like('%' + pod_name + '%'))
-    cluster = request.args.get('cluster', '').strip()
+    cluster = args.get('cluster', '').strip()
     if cluster:
         base = base.filter(PodInfoHistoryV2.cluster == cluster)
-    node = request.args.get('node_name', '').strip()
+    node = args.get('node_name', '').strip()
     if node:
         base = base.filter(PodInfoHistoryV2.node_name.like('%' + node + '%'))
-    gpu_type = request.args.get('gpu_type', '').strip()
+    gpu_type = args.get('gpu_type', '').strip()
     if gpu_type:
         base = base.outerjoin(AllNodeMemory, AllNodeMemory.node_name == PodInfoHistoryV2.node_name)
         base = base.filter(AllNodeMemory.gpu_type == gpu_type)
-    start_time = request.args.get('start_time', '').strip()
+    start_time = args.get('start_time', '').strip()
     if start_time:
         base = base.filter(PodInfoHistoryV2.update_at >= (start_time + ' 00:00:00' if len(start_time) == 10 else start_time))
-    end_time = request.args.get('end_time', '').strip()
+    end_time = args.get('end_time', '').strip()
     if end_time:
         base = base.filter(PodInfoHistoryV2.update_at <= (end_time + ' 23:59:59' if len(end_time) == 10 else end_time))
+    return base
+
+
+def _pod_row_dict(r, nodes):
+    """快照行 → 展示字典（含扣费状态）"""
+    return {
+        'pod_uid': r.pod_uid, 'pod_name': r.pod_name or '', 'namespace': r.k8s_namespace or '',
+        'status': r.status or '', 'node_name': r.node_name or '', 'cluster': r.cluster or '',
+        'username': r.username or '',
+        'gpu_type': nodes.get(r.node_name) or '',
+        'gpu_mem_usage_gb': r.gpu_mem_usage_gb or 0, 'gpu_usage': r.gpu_usage or 0,
+        'mem_limit_gb': r.mem_limit_gb or 0, 'cpu_limit': r.cpu_limit or 0,
+        'duration_hours': _parse_duration_hours(r.duration),
+        'billed_duration': round(r.billed_duration or 0, 2),
+        'billed_count': r.billed_count or 0,
+        'last_billed_at': r.last_billed_at.strftime('%Y-%m-%d %H:%M:%S') if r.last_billed_at else '',
+        'created_at': r.created_at.strftime('%Y-%m-%d %H:%M:%S') if r.created_at else '',
+        'update_at': r.update_at.strftime('%Y-%m-%d %H:%M:%S') if r.update_at else '',
+        'label': r.label or '',
+    }
+
+
+def _query_pod_history(username=None):
+    """公共查询：最新快照聚合（按 pod_uid），username 为空=全部（管理员）"""
+    base = db.session.query(PodInfoHistoryV2.pod_uid,
+                            db.func.max(PodInfoHistoryV2.update_at).label('max_update'))
+    if username:
+        base = base.filter_by(username=username)
+    base = _pod_history_filters(base, request.args)
     sub = base.group_by(PodInfoHistoryV2.pod_uid).subquery()
     q = db.session.query(PodInfoHistoryV2).join(
         sub, and_(PodInfoHistoryV2.pod_uid == sub.c.pod_uid,
@@ -1765,20 +1821,26 @@ def billing_my_pod_history():
     page = max(int(request.args.get('page', 1) or 1), 1)
     page_size = min(max(int(request.args.get('page_size', 20) or 20), 1), 200)
     rows = q.order_by(PodInfoHistoryV2.update_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
-    # 批量关联显卡型号
     nodes = {n.node_name: n.gpu_type for n in db.session.query(AllNodeMemory).all()}
-    result = [{
-        'pod_uid': r.pod_uid, 'pod_name': r.pod_name or '', 'namespace': r.k8s_namespace or '',
-        'status': r.status or '', 'node_name': r.node_name or '', 'cluster': r.cluster or '',
-        'gpu_type': nodes.get(r.node_name) or '',
-        'gpu_mem_usage_gb': r.gpu_mem_usage_gb or 0, 'gpu_usage': r.gpu_usage or 0,
-        'mem_limit_gb': r.mem_limit_gb or 0, 'cpu_limit': r.cpu_limit or 0,
-        'duration_hours': _parse_duration_hours(r.duration),
-        'created_at': r.created_at.strftime('%Y-%m-%d %H:%M:%S') if r.created_at else '',
-        'update_at': r.update_at.strftime('%Y-%m-%d %H:%M:%S') if r.update_at else '',
-        'label': r.label or '',
-    } for r in rows]
-    return ok_response({'count': total, 'page': page, 'page_size': page_size, 'pods': result})
+    return {'count': total, 'page': page, 'page_size': page_size,
+            'pods': [_pod_row_dict(r, nodes) for r in rows]}
+
+
+@app.route('/billing/api/my/pod_history', methods=['GET'])
+def billing_my_pod_history():
+    """我的历史 Pod 记录：按 pod_uid 聚合最新快照，任意组合筛选"""
+    if not g.user or not g.user.is_authenticated:
+        return err_response('please login', 401)
+    return ok_response(_query_pod_history(username=g.user.username))
+
+
+@app.route('/billing/api/admin/pod_history', methods=['GET'])
+def billing_admin_pod_history():
+    """管理员：全部用户的 Pod 记录（多 username 筛选参数）"""
+    if not check_admin_user():
+        return err_response('admin required', 403)
+    username = request.args.get('username', '').strip()
+    return ok_response(_query_pod_history(username=username or None))
 
 
 @app.route('/billing/api/my/pod_history/detail', methods=['GET'])
@@ -1794,19 +1856,8 @@ def billing_my_pod_history_detail():
     if not rows:
         return err_response('record not found')
     nodes = {n.node_name: n.gpu_type for n in db.session.query(AllNodeMemory).all()}
-    result = [{
-        'id': r.id, 'pod_uid': r.pod_uid, 'pod_name': r.pod_name or '',
-        'namespace': r.k8s_namespace or '', 'status': r.status or '',
-        'node_name': r.node_name or '', 'cluster': r.cluster or '',
-        'gpu_type': nodes.get(r.node_name) or '',
-        'gpu_mem_usage_gb': r.gpu_mem_usage_gb or 0, 'gpu_usage': r.gpu_usage or 0,
-        'mem_limit_gb': r.mem_limit_gb or 0, 'cpu_limit': r.cpu_limit or 0,
-        'duration_hours': _parse_duration_hours(r.duration),
-        'created_at': r.created_at.strftime('%Y-%m-%d %H:%M:%S') if r.created_at else '',
-        'update_at': r.update_at.strftime('%Y-%m-%d %H:%M:%S') if r.update_at else '',
-        'label': r.label or '',
-    } for r in rows]
-    return ok_response({'pod_uid': pod_uid, 'count': len(result), 'rows': result})
+    return ok_response({'pod_uid': pod_uid, 'count': len(rows),
+                        'rows': [_pod_row_dict(r, nodes) for r in rows]})
 
 
 def _parse_duration_hours(duration):

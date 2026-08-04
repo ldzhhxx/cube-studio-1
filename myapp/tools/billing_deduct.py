@@ -2,11 +2,18 @@
 """快照自动扣费引擎（数据源：pod_info_history_v2 + all_node_memory）
 
 一轮扣费 = run_deduct()：
-  遍历所有 pod 的最新快照 → 过滤（Running / 最低时长 / 白名单 / 用户匹配）
+  遍历所有 pod_uid → 锁定最新快照行（FOR UPDATE 防并发重复扣）
+  → 过滤（Running / 最低时长 / 白名单 / 用户匹配）
   → JOIN all_node_memory 取显卡型号（NULL=CPU 节点不收 GPU 费；查不到按 gpu_fallback 兜底）
-  → 增量结算（最新 duration − 上次已扣时长）→ 生成/更新 draft 扣费单
+  → 增量结算（最新 duration − billed_duration）→ 生成/更新 draft 扣费单
+  → 同一事务写入扣费指针（最新行的 billed_duration/billed_count/last_billed_at）
 
-结算 = settle_bill()：agreed → settled，钱包扣款 + consume 流水（幂等）
+指针规则（挂在 pod_info_history_v2 上）：
+  - 写：只写"最新快照行"（update_at / id 最大）
+  - 读：MAX(billed_duration) 兜底——扫描器新增快照行（NULL）不会丢失指针
+  - 作废回退：rollback_billed() 把 billed_duration 退到该单起点
+
+结算 = settle_bill()：agreed → settled，钱包扣款 + consume 流水（幂等，不动指针）
 超时自动扣费 = auto_settle_scan()：pushed 超过 auto_settle_days 天未处理 → 自动同意并入账
 
 规则配置见 billing_config 表（min_duration_minutes / month_hours / auto_settle_days / gpu_fallback / enabled）
@@ -105,33 +112,36 @@ def get_gpu_type(node_name):
     return get_config('gpu_fallback', 'L20'), True   # 节点查不到：兜底
 
 
-def _all_latest_snapshots():
-    """所有 pod 的最新快照（每个 pod_uid 一条，按 update_at 取最大）"""
-    sub = db.session.query(
-        PodInfoHistoryV2.pod_uid,
-        db.func.max(PodInfoHistoryV2.update_at).label('max_update'),
-    ).group_by(PodInfoHistoryV2.pod_uid).subquery()
-    snaps = db.session.query(PodInfoHistoryV2).join(
-        sub, and_(PodInfoHistoryV2.pod_uid == sub.c.pod_uid,
-                  PodInfoHistoryV2.update_at == sub.c.max_update)).all()
-    # 同 pod 同 update_at 取 id 最大的一条
-    seen = {}
-    for s in snaps:
-        old = seen.get(s.pod_uid)
-        if old is None or s.id > old.id:
-            seen[s.pod_uid] = s
-    return list(seen.values())
+def all_pod_uids():
+    """全部有快照的 pod_uid（去重）"""
+    rows = db.session.query(PodInfoHistoryV2.pod_uid).distinct().all()
+    return [r[0] for r in rows if r[0]]
 
 
-def billed_to_hours(pod_uid):
-    """该任务已计费到的时长（小时）：取已生效扣费单的最大 deduct_to_hours。
-    draft（未推送）/cancelled（作废）/failed（失败）不占用指针"""
+def latest_snapshot(pod_uid, for_update=False):
+    """某任务的最新快照行（update_at / id 最大）。
+    for_update=True 时加行锁，防并发重复扣费"""
+    q = db.session.query(PodInfoHistoryV2).filter_by(pod_uid=pod_uid).order_by(
+        PodInfoHistoryV2.update_at.desc(), PodInfoHistoryV2.id.desc())
+    if for_update:
+        q = q.with_for_update()
+    return q.first()
+
+
+def rollback_billed(pod_uid, deduct_from_hours):
+    """作废扣费单时回退指针：billed_duration 回到该单起点。
+    若该 pod 还有计费终点更大的生效单，则回退到最大终点（不破坏已生效区间）"""
     if not pod_uid:
-        return 0
-    row = db.session.query(db.func.max(Bill.deduct_to_hours)).filter(
+        return
+    remain = db.session.query(db.func.max(Bill.deduct_to_hours)).filter(
         Bill.pod_uid == pod_uid,
-        Bill.status.notin_(('draft', 'cancelled', 'failed'))).first()
-    return row[0] or 0
+        Bill.status.notin_(('draft', 'cancelled', 'failed'))).scalar() or 0
+    target = max(float(remain), float(deduct_from_hours or 0))
+    snap = latest_snapshot(pod_uid)
+    if not snap:
+        return
+    snap.billed_duration = target
+    snap.billed_count = max(0, (snap.billed_count or 0) - 1)
 
 
 # ============================================================
@@ -172,39 +182,39 @@ def run_deduct(operator='', execute_type='manual', remark=''):
 
 
 def _run_engine(run):
-    """计算主体：先纯计算（不落库），再统一写入，单事务 + 单 pod 出错不影响整批"""
+    """计算主体：逐 pod 锁定最新行计算（FOR UPDATE），再统一写入，单事务"""
     from myapp.views.view_billing import calc_resources, _write_bill_items
 
     whitelist = build_whitelist()
     gpu_parent = get_gpu_parent()
     min_duration_hours = get_config_float('min_duration_minutes', 10) / 60.0
-    snaps = _all_latest_snapshots()
 
-    computed = []       # 待写入的 bill_data
+    computed = []       # (bill_data, 锁定的快照行) 待写入
     errors = []
-    for s in snaps:
+    for pod_uid in all_pod_uids():
         try:
-            data = _compute_pod(s, whitelist, gpu_parent, min_duration_hours)
+            data = _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours)
         except _Skip as sk:
             counter = _SKIP_COUNTERS.get(sk.reason)
             if counter:
                 setattr(run, counter, (getattr(run, counter) or 0) + 1)
             continue
         except Exception as e:
-            logger.warning('billing deduct pod %s(%s) error: %s' % (s.pod_uid, s.pod_name, e))
-            errors.append('%s:%s' % (s.pod_name, str(e)[:60]))
+            logger.warning('billing deduct pod %s error: %s' % (pod_uid, e))
+            errors.append('%s:%s' % (str(pod_uid)[:20], str(e)[:60]))
             continue
         computed.append(data)
-        if data.get('gpu_fallback'):
+        if data['_bill_data'].get('gpu_fallback'):
             run.skipped_fallback_gpu = (run.skipped_fallback_gpu or 0) + 1
 
-    # 统一写入：生成/更新 draft 单（同 pod 的旧 draft 直接更新，不重复建单）
+    # 统一写入：生成/更新 draft 单（同 pod 的旧 draft 直接更新，不重复建单）+ 写扣费指针
     for data in computed:
+        bill_data, snap = data['_bill_data'], data['_snapshot']
         bill = db.session.query(Bill).filter_by(
-            pod_uid=data['pod_uid'], source='history', status='draft').first()
+            pod_uid=bill_data['pod_uid'], source='history', status='draft').first()
         if not bill:
-            bill = Bill(pod_uid=data['pod_uid'], source='history', status='draft')
-        for k, v in data.items():
+            bill = Bill(pod_uid=bill_data['pod_uid'], source='history', status='draft')
+        for k, v in bill_data.items():
             if k in ('calc_items', 'gpu_fallback'):
                 continue
             setattr(bill, k, v)
@@ -212,57 +222,68 @@ def _run_engine(run):
         bill.updated_on = datetime.datetime.now()
         db.session.add(bill)
         db.session.flush()
-        _write_bill_items(bill.id, data['calc_items'])
+        _write_bill_items(bill.id, bill_data['calc_items'])
+        # 写扣费指针（最新快照行，计算阶段已加锁）
+        if snap is not None:
+            snap.billed_duration = bill_data['deduct_to_hours']
+            snap.billed_count = (snap.billed_count or 0) + 1
+            snap.last_billed_at = datetime.datetime.now()
 
     run.generated_count = len(computed)
     if errors:
         run.remark = ((run.remark or '') + '; 异常pod: ' + '; '.join(errors))[:500]
 
 
-def _compute_pod(s, whitelist, gpu_parent, min_duration_hours):
-    """单个 pod 计算（纯读，不写库）。返回 bill_data dict；跳过抛 _Skip"""
+def _compute_pod(pod_uid, whitelist, gpu_parent, min_duration_hours):
+    """单个 pod 计算：锁定最新快照行 → 过滤 → 增量 → 金额。
+    返回 {'_bill_data': bill_data, '_snapshot': snap}；跳过抛 _Skip"""
+    # 行锁：并发执行扣费时，第二个事务会阻塞到这里，看到已更新的 billed_duration 后增量=0 跳过
+    snap = latest_snapshot(pod_uid, for_update=True)
+    if snap is None:
+        raise _Skip('not_running')
+
     # 1. Running 过滤
-    if (s.status or '') != 'Running':
+    if (snap.status or '') != 'Running':
         raise _Skip('not_running')
 
     # 2. 时长解析 + 最低付费时长
     try:
-        duration = float(str(s.duration or '').strip())
+        duration = float(str(snap.duration or '').strip())
     except Exception:
         duration = 0
     if duration <= 0 or duration < min_duration_hours:
         raise _Skip('below_min')
 
     # 3. 用户匹配（白名单需要 org）
-    user = get_user_by_username(s.username)
+    user = get_user_by_username(snap.username)
     if not user:
         raise _Skip('no_user')
 
     # 4. 白名单（user / org / cluster 任一命中即跳过）
-    if is_whitelisted(whitelist, user.username, user.org, s.cluster):
+    if is_whitelisted(whitelist, user.username, user.org, snap.cluster):
         raise _Skip('whitelist')
 
     # 5. 显卡型号（NULL=CPU 节点不收 GPU 费；查不到兜底）
-    gpu_model, fallback = get_gpu_type(s.node_name)
+    gpu_model, fallback = get_gpu_type(snap.node_name)
     try:
-        gpu_num = float(s.gpu_usage or 0) / 100.0
+        gpu_num = float(snap.gpu_usage or 0) / 100.0
     except Exception:
         gpu_num = 0.0
 
-    # 6. 增量结算：最新 duration − 上次已扣时长
-    # 注意：billed_to 来自 MySQL float 列（float32），duration 来自 varchar 解析（float64），
-    # 直接相减会有 1e-5 级误差，需归整到 4 位小数（0.0001h=0.36s）避免"幽灵增量"重复计费
-    billed_to = billed_to_hours(s.pod_uid)
+    # 6. 增量结算：最新 duration − 已扣时长（指针就在最新行上）
+    #    注意 billed_duration 存 MySQL float 列（float32），duration 是 varchar 解析（float64），
+    #    直接相减有 1e-5 级误差，归整到 4 位小数（0.0001h=0.36s）避免"幽灵增量"重复计费
+    billed_to = float(snap.billed_duration or 0)
     delta = round(duration - billed_to, 4)
     if delta <= 0:
         raise _Skip('no_delta')
 
     # 7. 资源与金额（复用前端算价逻辑：Σ 数量 × 月单价 × 时长/720h）
     resources = []
-    if s.cpu_limit and float(s.cpu_limit) > 0:
-        resources.append({'item_key': 'cpu', 'quantity': float(s.cpu_limit)})
-    if s.mem_limit_gb and float(s.mem_limit_gb) > 0:
-        resources.append({'item_key': 'memory', 'quantity': float(s.mem_limit_gb)})
+    if snap.cpu_limit and float(snap.cpu_limit) > 0:
+        resources.append({'item_key': 'cpu', 'quantity': float(snap.cpu_limit)})
+    if snap.mem_limit_gb and float(snap.mem_limit_gb) > 0:
+        resources.append({'item_key': 'memory', 'quantity': float(snap.mem_limit_gb)})
     if gpu_num > 0 and gpu_model and gpu_parent:
         if get_gpu_child(gpu_parent, gpu_model):
             resources.append({'item_key': gpu_parent.item_key, 'option_key': gpu_model, 'quantity': gpu_num})
@@ -273,28 +294,29 @@ def _compute_pod(s, whitelist, gpu_parent, min_duration_hours):
     if amount_fen <= 0:
         raise _Skip('amount_zero')
 
-    return {
-        'pod_uid': s.pod_uid,
-        'pod_name': s.pod_name,
-        'namespace': s.k8s_namespace or '',
-        'task_name': s.pod_name or '',
+    bill_data = {
+        'pod_uid': snap.pod_uid,
+        'pod_name': snap.pod_name,
+        'namespace': snap.k8s_namespace or '',
+        'task_name': snap.pod_name or '',
         'username': user.username,
         'user_id': user.id,
         'org': user.org or '',
-        'cpu': float(s.cpu_limit or 0),
-        'memory': float(s.mem_limit_gb or 0),
+        'cpu': float(snap.cpu_limit or 0),
+        'memory': float(snap.mem_limit_gb or 0),
         'gpu_num': gpu_num,
         'gpu_type': gpu_model or '',
-        'gpu_memory': float(s.gpu_mem_usage_gb or 0),
+        'gpu_memory': float(snap.gpu_mem_usage_gb or 0),
         'duration_seconds': int(round(delta * 3600)),
         'amount_fen': amount_fen,
         'deduct_from_hours': billed_to,
         'deduct_to_hours': duration,
-        'start_time': s.created_at,
-        'end_time': s.update_at,
+        'start_time': snap.created_at,
+        'end_time': snap.update_at,
         'calc_items': calc_items,
         'gpu_fallback': bool(fallback),
     }
+    return {'_bill_data': bill_data, '_snapshot': snap}
 
 
 # ============================================================
@@ -302,7 +324,7 @@ def _compute_pod(s, whitelist, gpu_parent, min_duration_hours):
 # ============================================================
 def settle_bill(bill, operator=''):
     """扣费单入账：agreed → settled，钱包扣款 + consume 流水。
-    幂等：已 settled 直接返回 False；user_id 为空只记账不扣款"""
+    幂等：已 settled 直接返回 False；user_id 为空只记账不扣款。不动扣费指针"""
     if not bill:
         return False
     if bill.status == 'settled':
@@ -352,6 +374,21 @@ def auto_settle_scan():
             logger.warning('auto settle bill %s error: %s' % (b.id, e))
             db.session.rollback()
     return count
+
+
+def cancel_bill(bill, operator=''):
+    """作废扣费单（draft/pushed/disputed）：状态置 cancelled + 回退扣费指针"""
+    if not bill:
+        return False
+    if bill.status == 'settled':
+        raise ValueError('已入账的扣费单不能作废，请走冲正流程')
+    if bill.status == 'cancelled':
+        return False
+    rollback_billed(bill.pod_uid, bill.deduct_from_hours)
+    bill.status = 'cancelled'
+    bill.updated_on = datetime.datetime.now()
+    db.session.commit()
+    return True
 
 
 def find_bill(bill_id):

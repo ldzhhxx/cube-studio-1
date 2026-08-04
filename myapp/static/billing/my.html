@@ -364,7 +364,7 @@
         <button onclick="loadMyPods(1)">查询</button>
       </div>
       <table>
-        <thead><tr><th>Pod</th><th>状态</th><th>显卡</th><th style="text-align:right">显存(G)</th><th style="text-align:right">算力(卡)</th><th style="text-align:right">内存(G)</th><th style="text-align:right">CPU(核)</th><th style="text-align:right">时长(h)</th><th>创建时间</th><th>操作</th></tr></thead>
+        <thead><tr><th>Pod</th><th>状态</th><th>显卡</th><th style="text-align:right">显存(G)</th><th style="text-align:right">算力(卡)</th><th style="text-align:right">内存(G)</th><th style="text-align:right">CPU(核)</th><th style="text-align:right">时长(h)</th><th style="text-align:right">已扣时长(h)</th><th style="text-align:right">扣费次数</th><th>创建时间</th><th>操作</th></tr></thead>
         <tbody id="podBody"></tbody>
       </table>
       <div class="pager"><span class="info" id="pInfo"></span><button onclick="podPage(-1)">‹</button><span id="pPages"></span><button onclick="podPage(1)">›</button></div>
@@ -672,12 +672,13 @@ async function loadMyPods(page) {
     if ($('podStart').value.trim()) params.set('start_time', $('podStart').value.trim());
     if ($('podEnd').value.trim()) params.set('end_time', $('podEnd').value.trim());
     const r = await api('/billing/api/my/pod_history?' + params);
-    if (!r.pods.length) { $('podBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:#94a3b8">暂无记录</td></tr>'; $('pInfo').textContent = ''; $('pPages').innerHTML = ''; return; }
+    if (!r.pods.length) { $('podBody').innerHTML = '<tr><td colspan="12" style="text-align:center;color:#94a3b8">暂无记录</td></tr>'; $('pInfo').textContent = ''; $('pPages').innerHTML = ''; return; }
     $('podBody').innerHTML = r.pods.map(p =>
       '<tr><td>' + esc(p.pod_name) + '</td><td>' + (p.status === 'Running' ? tag('success', p.status) : tag('neutral', p.status)) + '</td>' +
       '<td>' + esc(p.gpu_type || 'CPU') + '</td><td style="text-align:right">' + p.gpu_mem_usage_gb + '</td>' +
       '<td style="text-align:right">' + (p.gpu_usage / 100) + '</td><td style="text-align:right">' + p.mem_limit_gb + '</td>' +
       '<td style="text-align:right">' + p.cpu_limit + '</td><td style="text-align:right">' + p.duration_hours + '</td>' +
+      '<td style="text-align:right">' + p.billed_duration + '</td><td style="text-align:right">' + p.billed_count + '</td>' +
       '<td>' + esc(p.created_at) + '</td><td><button onclick="showPodDetail(\'' + p.pod_uid + '\')">查看快照</button></td></tr>').join('');
     $('pInfo').textContent = '共 ' + r.count + ' 个任务';
     $('pPages').innerHTML = pagination(page, r.count, 'loadMyPods');

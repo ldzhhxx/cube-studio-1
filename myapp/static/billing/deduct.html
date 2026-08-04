@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>计费中心</title>
+<style>
+  :root {
+    --primary: #4f6ef7;
+    --primary-dark: #3b55d9;
+    --primary-light: #eef1fe;
+    --success: #22c55e;
+    --success-bg: #e8f9ef;
+    --danger: #ef4444;
+    --danger-bg: #fdecec;
+    --warning: #f59e0b;
+    --warning-bg: #fef4e2;
+    --info: #06b6d4;
+    --info-bg: #e5f8fb;
+    --text: #1f2430;
+    --text-2: #5a6172;
+    --text-3: #9aa1b2;
+    --border: #e6e9f2;
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --radius: 14px;
+    --shadow: 0 4px 16px rgba(31, 45, 90, .07);
+    --shadow-hover: 0 10px 28px rgba(31, 45, 90, .13);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ===== 版本标识 ===== */
+  .build-tag {
+    position: fixed; right: 10px; bottom: 8px; z-index: 999;
+    font-size: 10.5px; color: rgba(90, 97, 114, .45);
+    background: rgba(255,255,255,.7); padding: 2px 8px; border-radius: 6px;
+    font-family: "SF Mono", Consolas, monospace; user-select: none;
+    pointer-events: none;
+  }
+
+  .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .ico-sm { width: 13px; height: 13px; }
+  .ico-lg { width: 22px; height: 22px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #c9cfe0; border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ===== 头部 ===== */
+  .hero {
+    background: linear-gradient(120deg, #2b3c9e 0%, #4f6ef7 55%, #7aa2ff 100%);
+    padding: 26px 32px 72px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    right: -120px; top: -140px;
+    width: 420px; height: 420px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.14), transparent 65%);
+  }
+  .hero-top { display: flex; align-items: center; justify-content: space-between; max-width: 1280px; margin: 0 auto; position: relative; z-index: 1; }
+  .hero-title { display: flex; align-items: center; gap: 14px; }
+  .hero-title .logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.28);
+  }
+  .hero-title h1 { font-size: 21px; font-weight: 600; letter-spacing: .5px; }
+  .hero-title p { font-size: 12px; opacity: .75; margin-top: 3px; }
+  .hero-actions { display: flex; gap: 12px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 20px; border-radius: 10px; border: none;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: all .18s ease; font-family: inherit;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); box-shadow: 0 6px 18px rgba(79,110,247,.4); }
+  .btn-white { background: rgba(255,255,255,.16); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
+  .btn-white:hover { background: rgba(255,255,255,.26); }
+  .btn-ghost { background: #fff; color: var(--primary); box-shadow: inset 0 0 0 1px var(--border); }
+  .btn-ghost:hover { background: var(--primary-light); }
+  .btn-sm { padding: 6px 14px; font-size: 13px; border-radius: 8px; }
+
+  /* ===== 统计卡片 ===== */
+  .stats { max-width: 1280px; margin: -46px auto 0; padding: 0 32px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; position: relative; z-index: 2; }
+  .stat-card {
+    background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+    box-shadow: var(--shadow); transition: all .2s ease; cursor: default;
+    border: 1px solid transparent;
+  }
+  .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); border-color: #d8defc; }
+  .stat-label { font-size: 12.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+  .stat-value { font-size: 26px; font-weight: 700; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .stat-value small { font-size: 13px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+  .stat-extra { font-size: 12px; color: var(--text-3); margin-top: 5px; }
+  .stat-ico { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+
+  /* ===== 计费标准面板 ===== */
+  .price-panel {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .price-head {
+    display: flex; align-items: center; gap: 12px; padding: 13px 20px;
+    border-bottom: 1px solid var(--border); background: #fbfcff; flex-wrap: wrap;
+  }
+  .price-head b { font-size: 15px; }
+  .price-head .muted { font-size: 12.5px; }
+  .price-head .actions { margin-left: auto; display: flex; gap: 8px; }
+  /* 计费标准：表格化排版（一行一个计费项，型号子行缩进） */
+  .price-table { width: 100%; border-collapse: collapse; }
+  .price-table th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .price-table td { padding: 12px 16px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; vertical-align: middle; }
+  .price-table tbody tr:last-child td { border-bottom: none; }
+  .pt-item td { background: #fff; }
+  .pt-model td { background: #fbfcff; }
+  .pt-item:hover td { background: #f7f9fe; }
+  .pt-opt td { padding: 9px 16px 9px 52px; color: var(--text-2); background: #fff; }
+  .pt-opt:hover td { background: #f7f9fe; }
+  .pt-name { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .pt-name .res-ico {
+    width: 28px; height: 28px; border-radius: 8px; display: inline-flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .pt-opt-name { display: flex; align-items: center; gap: 8px; }
+  .pt-opt-name::before { content: '└'; color: var(--text-3); font-size: 12px; }
+  .pt-price { font-size: 17px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .pt-price small { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+  .pt-unit { color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+  .pt-opt .pt-price { font-size: 14.5px; }
+  .pt-price .input { width: 110px; height: 32px; font-size: 13px; text-align: right; margin: 0; }
+  .pt-opt .pt-price .input { width: 96px; }
+  .pt-actions { text-align: right; white-space: nowrap; }
+  .pt-add-row td { background: #fbfcff; padding: 12px 16px; }
+  .pt-add-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pt-add-form .input { flex: 1; min-width: 100px; height: 34px; font-size: 13px; }
+  .pt-add-form .select { height: 34px; font-size: 13px; }
+  .price-edit-note { font-size: 12px; color: var(--text-3); padding: 10px 20px; border-top: 1px solid #f1f3fa; }
+  @media (max-width: 900px) { .pt-actions { display: none; } }
+
+  /* ===== API 说明模态框 ===== */
+  .api-code {
+    background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 14px 16px;
+    font-family: "SF Mono", Consolas, Menlo, monospace; font-size: 12.5px;
+    line-height: 1.7; overflow-x: auto; white-space: pre; margin: 8px 0 16px;
+  }
+  .api-code .cmt { color: #64748b; }
+  .api-code .key { color: #93c5fd; }
+  .api-code .str { color: #86efac; }
+  .api-block { margin-bottom: 6px; }
+  .api-block h4 { font-size: 14px; margin: 14px 0 8px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .api-block h4 .badge-m { background: var(--primary-light); color: var(--primary); border-radius: 6px; padding: 1px 8px; font-size: 11px; }
+  .api-tip { font-size: 12.5px; color: var(--text-3); margin: 6px 0; }
+
+  /* ===== 组织架构（中心-部门 树形表） ===== */
+  .section { max-width: 1280px; margin: 20px auto 0; padding: 0 32px; }
+  .org-panel {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .org-toolbar {
+    display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+    border-bottom: 1px solid var(--border); background: #fbfcff; flex-wrap: wrap;
+  }
+  .org-toolbar b { font-size: 15px; }
+  .org-toolbar .input { min-width: 220px; height: 34px; }
+  .org-summary { margin-left: auto; font-size: 12.5px; color: var(--text-3); }
+  .org-table { width: 100%; border-collapse: collapse; }
+  .org-table th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .org-table td { padding: 10px 14px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; }
+  .org-center { background: #fbfcff; cursor: pointer; }
+  .org-center:hover { background: var(--primary-light); }
+  .org-center td { font-weight: 600; }
+  .org-dept td { padding-left: 40px; color: var(--text-2); }
+  .org-dept.clickable { cursor: pointer; }
+  .org-dept.clickable:hover { background: var(--primary-light); }
+  .org-arrow { display: inline-block; width: 14px; font-size: 10px; color: var(--primary); transition: transform .15s ease; }
+  .bar { background: #eef1f8; border-radius: 4px; height: 7px; overflow: hidden; min-width: 80px; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, #4f6ef7, #7aa2ff); border-radius: 4px; }
+  .bar-fill.dim { background: linear-gradient(90deg, #a9b8f8, #c7d2fb); }
+  .org-muted { color: var(--text-3); font-weight: 400; font-size: 12.5px; }
+
+  /* ===== 部门内联详情（点击部门行展开） ===== */
+  .org-inline {
+    margin: 0 16px 14px; background: #fff; border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(31, 45, 90, .05);
+    animation: fadeIn .18s ease;
+  }
+  .oi-head {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 16px; background: linear-gradient(120deg, #eef1fe, #f7f9ff);
+    border-bottom: 1px solid var(--border);
+  }
+  .oi-head b { font-size: 14.5px; color: var(--primary-dark); }
+  .oi-head .oi-summary { font-size: 12.5px; color: var(--text-2); }
+  .oi-head .oi-actions { margin-left: auto; display: flex; gap: 8px; }
+  .oi-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; }
+  .oi-col { padding: 12px 16px; border-right: 1px solid #f1f3fa; min-width: 0; }
+  .oi-col:last-child { border-right: none; }
+  .oi-col h4 {
+    font-size: 12.5px; color: var(--text-2); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .oi-col h4 .cnt { background: var(--primary-light); color: var(--primary); border-radius: 20px; padding: 0 7px; font-size: 11px; }
+  .oi-table { width: 100%; border-collapse: collapse; }
+  .oi-table td { padding: 7px 4px; border-bottom: 1px solid #f5f7fc; font-size: 12.5px; }
+  .oi-table tr:last-child td { border-bottom: none; }
+  .oi-empty { color: var(--text-3); font-size: 12.5px; padding: 10px 2px; }
+  .oi-loading { padding: 26px; text-align: center; color: var(--text-3); font-size: 13px; }
+  @media (max-width: 1024px) { .oi-cols { grid-template-columns: 1fr; } .oi-col { border-right: none; border-bottom: 1px solid #f1f3fa; } }
+
+  /* ===== 主面板 ===== */
+  .panel {
+    max-width: 1280px; margin: 20px auto 40px; padding: 0 32px;
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; background: #fbfcff; }
+  .tab {
+    padding: 15px 22px; font-size: 15px; font-weight: 500; color: var(--text-2);
+    cursor: pointer; border-bottom: 3px solid transparent; transition: all .15s ease;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tab:hover { color: var(--primary); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab .count-badge {
+    background: var(--primary-light); color: var(--primary); font-size: 11.5px;
+    border-radius: 20px; padding: 1px 9px; font-weight: 600;
+  }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 16px 20px; flex-wrap: wrap; }
+  .input, .select {
+    height: 36px; border: 1px solid var(--border); border-radius: 9px; padding: 0 12px;
+    font-size: 13.5px; font-family: inherit; color: var(--text);
+    background: #fff; outline: none; transition: all .15s ease; min-width: 130px;
+  }
+  .input:focus, .select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,.13); }
+  .input.wide { min-width: 200px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: #f7f9fd; color: var(--text-2); font-size: 12.5px; font-weight: 600;
+    padding: 11px 14px; text-align: left; white-space: nowrap;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  .sortable { cursor: pointer; user-select: none; }
+  .sortable:hover { color: var(--primary); }
+  .sort-mark { color: var(--primary); font-size: 10px; }
+  .action-btn {
+    padding: 3px 10px; font-size: 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: #fff; color: var(--text-2);
+    transition: all .15s ease; font-family: inherit;
+  }
+  .action-btn:hover { border-color: var(--danger); color: var(--danger); }
+  tbody td { padding: 12px 14px; border-bottom: 1px solid #f1f3fa; font-size: 13.5px; color: var(--text); }
+  tbody tr { transition: background .12s ease; }
+  tbody tr:hover { background: #f7f9fe; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .empty { text-align: center; padding: 60px 0; color: var(--text-3); font-size: 14px; }
+
+  /* ===== 账单行点击展开明细 ===== */
+  .bill-row { cursor: pointer; }
+  .bill-row .arrow { display: inline-block; width: 12px; color: var(--text-3); font-size: 11px; transition: transform .15s ease; }
+  .bill-row.open .arrow { transform: rotate(90deg); color: var(--primary); }
+  .bill-detail-row td { background: #f7f9fe; padding: 10px 14px 14px 36px; }
+  .bill-detail-items { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bill-detail-item {
+    display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e8ecf5;
+    border-radius: 8px; padding: 6px 12px; font-size: 12.5px; color: var(--text-2);
+  }
+  .bill-detail-item b { color: var(--text); font-weight: 600; }
+  .bill-detail-item .amt { color: var(--danger); font-weight: 600; }
+  .bill-detail-empty { font-size: 12.5px; color: var(--text-3); }
+
+  .tag { display: inline-flex; align-items: center; padding: 2.5px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .tag-success { background: var(--success-bg); color: var(--success); }
+  .tag-danger { background: var(--danger-bg); color: var(--danger); }
+  .tag-info { background: var(--info-bg); color: var(--info); }
+  .tag-warning { background: var(--warning-bg); color: var(--warning); }
+  .tag-neutral { background: #f0f2f7; color: var(--text-2); }
+  .amount-plus { color: var(--success); font-weight: 600; }
+  .amount-minus { color: var(--danger); font-weight: 600; }
+  .user-cell { display: flex; align-items: center; gap: 9px; }
+  .user-avatar {
+    width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 600;
+    background: linear-gradient(135deg, #4f6ef7, #7aa2ff); color: #fff;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .user-avatar.alt { background: linear-gradient(135deg, #10b981, #34d399); }
+  .user-avatar.alt2 { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+  .user-avatar.alt3 { background: linear-gradient(135deg, #ef4444, #f87171); }
+  .org-chip { background: #f0f2f7; color: var(--text-2); border-radius: 6px; padding: 1.5px 8px; font-size: 12px; }
+  .muted { color: var(--text-3); }
+
+  /* ===== 分页 ===== */
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 20px; }
+  .pager .info { font-size: 12.5px; color: var(--text-3); margin-right: auto; }
+  .pager button {
+    min-width: 32px; height: 32px; border: 1px solid var(--border); background: #fff;
+    border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-2);
+    transition: all .15s ease; font-family: inherit;
+  }
+  .pager button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+  .pager button:disabled { opacity: .4; cursor: not-allowed; }
+  .pager button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  /* ===== 扣费明细：表头 + 数据行网格 ===== */
+  .dt-wrap { overflow-x: auto; padding-bottom: 4px; }
+  .dt-head, .dt-row { display: grid; gap: 8px; align-items: center; min-width: 900px; }
+  .dt-head {
+    padding: 9px 4px; font-size: 12px; color: var(--text-3);
+    border-bottom: 1px solid var(--border); background: #fbfcff;
+    border-radius: 8px 8px 0 0; white-space: nowrap;
+  }
+  .dt-row { margin-bottom: 8px; }
+  .dt-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-row .input { width: 100%; height: 36px; font-size: 13px; }
+  .dt-row .select { width: 100%; height: 36px; font-size: 13px; }
+  .dt-row .search-select .input { width: 100%; }
+  .dt-model-cell { display: flex; gap: 6px; align-items: center; }
+  .dt-model-cell .select { width: 118px; flex-shrink: 0; font-size: 12.5px; }
+  .dt-model-cell .input { flex: 1; min-width: 60px; width: auto; }
+  .dt-model-list { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+  .dt-model-item {
+    display: flex; align-items: center; gap: 7px; padding: 4px 8px;
+    border-radius: 7px; cursor: pointer; font-size: 12.5px; color: var(--text-2);
+    border: 1px solid transparent; transition: all .12s ease; user-select: none;
+  }
+  .dt-model-item:hover { background: var(--primary-light); }
+  .dt-model-item.selected { background: var(--primary-light); color: var(--primary-dark); border-color: #c9d3fb; font-weight: 600; }
+  .dt-model-dot {
+    width: 13px; height: 13px; border-radius: 50%; border: 2px solid #c9cfe0;
+    flex-shrink: 0; transition: all .12s ease;
+  }
+  .dt-model-item.selected .dt-model-dot { border-color: var(--primary); box-shadow: inset 0 0 0 3px #fff, 0 0 0 1px var(--primary); }
+  .dt-model-price { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+  .dt-model-item.selected .dt-model-price { color: var(--primary); }
+  .dt-amount { text-align: right; font-weight: 600; color: var(--primary); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dt-del { width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; }
+
+  /* ===== 模态框 ===== */
+  .mask {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, .5);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    backdrop-filter: blur(3px); animation: fadeIn .18s ease;
+  }
+  .mask.show { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: #fff; border-radius: 18px; width: 440px; max-width: calc(100vw - 40px);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .25); animation: slideUp .22s ease;
+    overflow: hidden;
+  }
+  @keyframes slideUp { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .modal-head {
+    padding: 18px 24px; display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(120deg, #2b3c9e, #4f6ef7); color: #fff;
+  }
+  .modal-head h3 { font-size: 16px; font-weight: 600; }
+  .modal-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; opacity: .8; line-height: 1; }
+  .modal-close:hover { opacity: 1; }
+  .modal-body { padding: 22px 24px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px; font-weight: 500; }
+  .field .input, .field .select { width: 100%; min-width: 0; height: 40px; }
+
+  /* ===== 可搜索用户选择 ===== */
+  .search-select { position: relative; }
+  .search-select .input { width: 100%; min-width: 0; height: 40px; }
+  .ss-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .14); z-index: 50;
+    max-height: 260px; overflow-y: auto; display: none;
+  }
+  .ss-dropdown.show { display: block; animation: fadeIn .14s ease; }
+  .ss-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; cursor: pointer; transition: background .1s ease;
+  }
+  .ss-item:hover { background: var(--primary-light); }
+  .ss-item .user-cell { display: flex; align-items: center; gap: 9px; }
+  .ss-item .ss-meta { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+  .ss-empty { padding: 16px; text-align: center; color: var(--text-3); font-size: 13px; }
+  .ss-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    border: none; background: none; color: var(--text-3); cursor: pointer;
+    font-size: 12px; padding: 2px 4px; border-radius: 4px;
+  }
+  .ss-clear:hover { color: var(--danger); background: var(--danger-bg); }
+  .modal-foot { padding: 0 24px 22px; display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ===== Toast ===== */
+  .toast-wrap { position: fixed; top: 22px; right: 22px; z-index: 200; display: flex; flex-direction: column; gap: 10px; }
+  .toast {
+    background: #fff; border-radius: 12px; padding: 13px 18px; min-width: 240px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .16); font-size: 14px;
+    display: flex; align-items: center; gap: 10px; animation: slideIn .22s ease;
+    border-left: 4px solid var(--primary);
+  }
+  .toast.success { border-left-color: var(--success); }
+  .toast.error { border-left-color: var(--danger); }
+  @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 1024px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .hero { padding: 22px 20px 64px; }
+    .section, .panel, .stats { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 线条图标库（Feather 风格，仅扣费页用到的） -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></symbol>
+</svg>
+
+<!-- 头部 -->
+<div class="hero">
+  <div class="hero-top">
+    <div class="hero-title">
+      <div class="logo"><svg class="ico ico-lg"><use href="#i-monitor"/></svg></div>
+      <div>
+        <h1>扣费管理</h1>
+        <p>基于任务资源快照（pod_info_history_v2）自动计费 · 用户确认后入账</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 流程说明：先看懂逻辑再操作 -->
+<div class="section" style="border-left:4px solid var(--primary)">
+  <div style="font-size:13px;color:var(--text-2);line-height:2">
+    <b style="color:var(--text-1)">扣费流程（5 步）：</b>
+    ① 在下方"规则配置"设置计费规则（最低付费时长、月价折算、超时自动扣费天数、定时周期）→
+    ② 点"执行扣费"：系统扫描所有在线任务的最新快照，按 <b>本次新增时长 × 资源单价</b> 生成扣费单（同一任务重复执行不重复收费）→
+    ③ 点"推送"把扣费单发给用户 →
+    ④ 用户在我的账单里<b>同意</b>（立即扣钱包）或<b>质疑</b>（管理员处理后重新推送/驳回/作废）→
+    ⑤ 用户超过 N 天未处理，系统<b>自动同意并入账</b>（N 在规则配置里设置）。
+    已入账的费用会写入用户资金流水，可随时对账。
+  </div>
+</div>
+
+<!-- ① 规则配置 -->
+<div class="section">
+  <div class="price-head">
+    <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-tag"/></svg> ① 规则配置</b>
+    <button class="btn btn-primary btn-sm" onclick="saveDeductConfig()">保存配置</button>
+  </div>
+  <div class="toolbar" style="margin-top:10px">
+    <label class="field">最低付费时长(分钟)<br><input class="input" id="dcMin" style="width:110px" title="Running 时长低于该值的任务不收费"></label>
+    <label class="field">月→小时折算(小时/月)<br><input class="input" id="dcMonth" style="width:110px" title="月单价 ÷ 该值 = 小时单价"></label>
+    <label class="field">超时自动扣费(天)<br><input class="input" id="dcDays" style="width:110px" title="推送后超过该天数未处理，自动同意并入账"></label>
+    <label class="field">定时扣费周期(分钟)<br><input class="input" id="dcInterval" style="width:110px" title="0=关闭定时，1440=每天，10080=每周"></label>
+    <label class="field">GPU兜底型号<br><input class="input" id="dcGpu" style="width:110px" title="节点查不到显卡型号时按该型号计费"></label>
+    <label class="field">功能开关<br><select class="select" id="dcEnabled"><option value="1">开启</option><option value="0">关闭</option></select></label>
+  </div>
+  <div style="color:var(--text-3);font-size:12px;margin-top:8px">GPU 单价按节点实际显卡型号（all_node_memory）读取；CPU / 内存 / GPU 单价在"计费控制台 → 计费标准"里设置。</div>
+</div>
+
+<!-- ② 执行扣费 -->
+<div class="section">
+  <div class="price-head">
+    <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-refresh"/></svg> ② 执行扣费</b>
+    <span style="color:var(--text-3);font-size:12px">幂等：重复执行只会计算新增时长，不会重复收费</span>
+  </div>
+  <div class="toolbar" style="margin-top:10px">
+    <input class="input" id="ddRemark" placeholder="本轮备注（可选）…" style="width:280px">
+    <button class="btn btn-primary" onclick="doDeductRun()">执行一轮扣费</button>
+    <span class="muted" id="ddResult" style="margin-left:10px"></span>
+  </div>
+  <div id="ddRuns" style="margin-top:12px"></div>
+</div>
+
+<!-- ③ 扣费单管理 -->
+<div class="section">
+  <div class="price-head">
+    <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-file"/></svg> ③ 扣费单管理</b>
+    <button class="btn btn-ghost btn-sm" onclick="doDeductPush([])" title="把当前所有待推送扣费单发给用户">一键推送所有待推送单</button>
+  </div>
+  <div class="toolbar" style="margin-top:10px">
+    <select class="select" id="ddStatus" onchange="loadDeductBills(1)">
+      <option value="">全部状态</option>
+      <option value="draft">待推送</option>
+      <option value="pushed">已推送（等用户确认）</option>
+      <option value="disputed">有异议（待处理）</option>
+      <option value="agreed">已同意</option>
+      <option value="settled">已入账</option>
+      <option value="cancelled">已作废</option>
+    </select>
+    <input class="input" id="ddUser" placeholder="用户名…" style="width:140px">
+    <input class="input" id="ddKeyword" placeholder="pod名/uid…" style="width:200px">
+    <button class="btn btn-primary btn-sm" onclick="loadDeductBills(1)">查询</button>
+    <span style="color:var(--text-3);font-size:12px">状态流转：待推送 → 已推送 → 已同意/有异议 → 已入账；超时未处理自动同意入账</span>
+  </div>
+  <div id="ddBills" style="margin-top:12px"></div>
+</div>
+
+<!-- ④ 白名单 -->
+<div class="section">
+  <div class="price-head">
+    <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-users"/></svg> ④ 扣费白名单</b>
+    <span style="color:var(--text-3);font-size:12px">白名单内的用户 / 部门 / 集群，其任务不参与扣费</span>
+  </div>
+  <div class="toolbar" style="margin-top:10px">
+    <select class="select" id="dwDim">
+      <option value="user">用户</option>
+      <option value="org">部门</option>
+      <option value="cluster">集群</option>
+    </select>
+    <input class="input" id="dwValue" placeholder="白名单值（用户名/部门名/集群名）…" style="width:220px">
+    <input class="input" id="dwNote" placeholder="备注…" style="width:160px">
+    <button class="btn btn-primary btn-sm" onclick="addWhitelist()">添加</button>
+  </div>
+  <div id="dwList" style="margin-top:12px"></div>
+</div>
+
+<!-- ⑤ 任务快照查询（管理员可查全部用户；普通用户在我的账单只能看自己的） -->
+<div class="section">
+  <div class="price-head">
+    <b><svg class="ico" style="vertical-align:-3px;color:var(--primary)"><use href="#i-monitor"/></svg> ⑤ 任务快照查询</b>
+    <span style="color:var(--text-3);font-size:12px">按 pod_uid 汇总每个任务的最新快照，含扣费状态（已扣时长 / 扣费次数）</span>
+  </div>
+  <div class="toolbar" style="margin-top:10px">
+    <input class="input" id="phUser" placeholder="用户名（空=全部）…" style="width:140px">
+    <select class="select" id="phStatus">
+      <option value="">全部状态</option>
+      <option value="Running">Running</option>
+      <option value="Pending">Pending</option>
+      <option value="Succeeded">Succeeded</option>
+      <option value="Failed">Failed</option>
+    </select>
+    <input class="input" id="phPod" placeholder="pod名（模糊）…" style="width:170px">
+    <input class="input" id="phGpu" placeholder="显卡型号…" style="width:110px">
+    <input class="input" id="phCluster" placeholder="集群…" style="width:110px">
+    <button class="btn btn-primary btn-sm" onclick="loadAdminPods(1)">查询</button>
+  </div>
+  <div id="phList" style="margin-top:12px"></div>
+</div>
+
+<!-- 确认弹窗 + Toast -->
+<div class="mask" id="maskConfirm">
+  <div class="modal" style="width:420px">
+    <div class="modal-head" style="background:linear-gradient(120deg,#8a2b2b,#ef4444)"><h3 id="cfTitle">确认操作</h3><button class="modal-close" onclick="$('maskConfirm').classList.remove('show')">✕</button></div>
+    <div class="modal-body"><div id="cfDesc" style="line-height:1.8;color:var(--text-2);font-size:13.5px"></div></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="$('maskConfirm').classList.remove('show')">取消</button>
+      <button class="btn btn-primary" style="background:var(--danger)" onclick="doConfirm()">确认执行</button>
+    </div>
+  </div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function yuan(fen) { return (fen / 100).toFixed(2); }
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || '');
+  el.innerHTML = ((type === 'error' ? '<svg class="ico" style="vertical-align:-3px"><use href="#i-alert"/></svg> ' : type === 'success' ? '<svg class="ico" style="vertical-align:-3px"><use href="#i-check"/></svg> ' : '<svg class="ico" style="vertical-align:-3px"><use href="#i-info"/></svg> ')) + msg;
+  $('toastWrap').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 2600);
+}
+async function api(url, opts) {
+  const resp = await fetch(url, opts);
+  let data = null;
+  try { data = await resp.json(); } catch (e) {}
+  if (!resp.ok || !data || data.status !== 200) throw new Error((data && data.message) || ('HTTP ' + resp.status));
+  return data.result;
+}
+function tag(type, text) {
+  const map = { success: 'tag-success', danger: 'tag-danger', info: 'tag-info', warning: 'tag-warning', neutral: 'tag-neutral' };
+  return '<span class="tag ' + (map[type] || 'tag-neutral') + '">' + text + '</span>';
+}
+let cfFn = null;
+function confirmAction(title, desc, fn) { $('cfTitle').textContent = title; $('cfDesc').innerHTML = desc; cfFn = fn; $('maskConfirm').classList.add('show'); }
+function doConfirm() { $('maskConfirm').classList.remove('show'); const fn = cfFn; cfFn = null; if (fn) fn(); }
+
+// ================= 状态与渲染 =================
+const DEDUCT_STATUS = { draft: '待推送', pushed: '已推送', agreed: '已同意', settled: '已入账', disputed: '有异议', cancelled: '已作废', failed: '失败' };
+function deductStatusTag(s) {
+  const map = { draft: 'neutral', pushed: 'info', agreed: 'warning', settled: 'success', disputed: 'danger', cancelled: 'neutral', failed: 'danger' };
+  return tag(map[s] || 'neutral', DEDUCT_STATUS[s] || s || '未知');
+}
+
+// ================= ① 规则配置 =================
+async function loadDeductConfig() {
+  try {
+    const c = await api('/billing/api/admin/deduct/config');
+    $('dcMin').value = c.min_duration_minutes || 10;
+    $('dcMonth').value = c.month_hours || 720;
+    $('dcDays').value = c.auto_settle_days || 7;
+    $('dcInterval').value = c.schedule_interval_minutes || 0;
+    $('dcGpu').value = c.gpu_fallback || 'L20';
+    $('dcEnabled').value = (c.enabled === '0' || c.enabled === 0) ? '0' : '1';
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function saveDeductConfig() {
+  try {
+    await api('/billing/api/admin/deduct/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        min_duration_minutes: $('dcMin').value,
+        month_hours: $('dcMonth').value,
+        auto_settle_days: $('dcDays').value,
+        schedule_interval_minutes: $('dcInterval').value,
+        gpu_fallback: $('dcGpu').value,
+        enabled: $('dcEnabled').value,
+      }),
+    });
+    toast('配置已保存', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ================= ② 执行扣费 =================
+const ddRunState = { page: 1 };
+async function loadDeductRuns(page) {
+  if (page) ddRunState.page = page;
+  try {
+    const r = await api('/billing/api/admin/deduct/runs?page=' + ddRunState.page + '&page_size=10');
+    if (!r.runs.length) { $('ddRuns').innerHTML = '<div class="empty">还没有执行过扣费，点击上方"执行一轮扣费"开始</div>'; return; }
+    $('ddRuns').innerHTML = '<table class="table"><thead><tr><th>批次</th><th>方式</th><th>操作人</th><th>生成单</th><th>跳过-已扣</th><th>跳过-非Running</th><th>跳过-未达阈值</th><th>跳过-白名单</th><th>跳过-无用户</th><th>GPU兜底</th><th>备注</th><th>时间</th></tr></thead><tbody>' +
+      r.runs.map(x => '<tr><td>#' + x.id + '</td><td>' + (x.execute_type === 'scheduled' ? '定时' : '手动') + '</td><td>' + esc(x.operator) + '</td>' +
+        '<td><b>' + x.generated_count + '</b></td><td>' + x.skipped_no_delta + '</td><td>' + x.skipped_not_running + '</td>' +
+        '<td>' + x.skipped_below_min + '</td><td>' + x.skipped_whitelist + '</td><td>' + x.skipped_no_user + '</td>' +
+        '<td>' + x.skipped_fallback_gpu + '</td><td title="' + esc(x.remark) + '">' + esc((x.remark || '').slice(0, 24)) + '</td><td>' + esc(x.created_on) + '</td></tr>').join('') + '</tbody></table>';
+    const totalPages = Math.max(1, Math.ceil(r.count / r.page_size));
+    if (totalPages > 1) {
+      $('ddRuns').innerHTML += '<div style="margin-top:8px"><button class="btn btn-sm" onclick="loadDeductRuns(' + (ddRunState.page - 1) + ')" ' + (ddRunState.page <= 1 ? 'disabled' : '') + '>上一页</button> ' + ddRunState.page + '/' + totalPages + ' <button class="btn btn-sm" onclick="loadDeductRuns(' + (ddRunState.page + 1) + ')" ' + (ddRunState.page >= totalPages ? 'disabled' : '') + '>下一页</button></div>';
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function doDeductRun() {
+  try {
+    const r = await api('/billing/api/admin/deduct/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remark: $('ddRemark').value }),
+    });
+    $('ddResult').innerHTML = '本轮生成 <b>' + r.generated_count + '</b> 张扣费单（跳过：已扣 ' + r.skipped_no_delta + ' / 白名单 ' + r.skipped_whitelist + ' / 无用户 ' + r.skipped_no_user + '）';
+    $('ddRemark').value = '';
+    loadDeductRuns();
+    loadDeductBills(1);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ================= ③ 扣费单管理 =================
+async function loadDeductBills(page) {
+  try {
+    const params = new URLSearchParams({ page: page, page_size: 20 });
+    if ($('ddStatus').value) params.set('status', $('ddStatus').value);
+    if ($('ddUser').value.trim()) params.set('username', $('ddUser').value.trim());
+    if ($('ddKeyword').value.trim()) params.set('keyword', $('ddKeyword').value.trim());
+    const r = await api('/billing/api/admin/deduct/bills?' + params);
+    if (!r.bills.length) { $('ddBills').innerHTML = '<div class="empty">暂无扣费单，先在上方执行一轮扣费</div>'; return; }
+    $('ddBills').innerHTML = '<table class="table"><thead><tr><th>ID</th><th>Pod / UID</th><th>用户</th><th>规格</th><th>本次时长</th><th>计费区间(h)</th><th>金额(元)</th><th>状态</th><th>批次</th><th>操作</th></tr></thead><tbody>' +
+      r.bills.map(b => {
+        const spec = 'GPU' + (b.gpu_num || 0) + '×' + esc(b.gpu_type || '-') + ' / ' + (b.memory || 0) + 'G / ' + (b.cpu || 0) + '核';
+        let ops = '';
+        if (b.status === 'draft') ops = '<button class="btn btn-primary btn-sm" onclick="doDeductPush([' + b.id + '])">推送</button> <button class="btn btn-sm" onclick="cancelDeductBill(' + b.id + ')">作废</button>';
+        if (b.status === 'pushed') ops = '<button class="btn btn-sm" onclick="cancelDeductBill(' + b.id + ')">作废</button> <button class="btn btn-sm" onclick="showBillItems(' + b.id + ')">明细</button>';
+        if (b.status === 'disputed') {
+          const reason = (b.disputes[0] && b.disputes[0].reason) || '';
+          ops = '<button class="btn btn-sm" title="质疑理由：' + esc(reason) + '" onclick="resolveDispute(' + b.id + ",'adjust'" + ')">改价</button> <button class="btn btn-sm" onclick="resolveDispute(' + b.id + ",'reject'" + ')">驳回</button> <button class="btn btn-sm" onclick="cancelDeductBill(' + b.id + ')">作废</button>';
+        }
+        if (b.status === 'agreed' || b.status === 'settled') ops = '<button class="btn btn-sm" onclick="showBillItems(' + b.id + ')">明细</button>';
+        return '<tr><td>' + b.id + '</td><td>' + esc(b.pod_name) + '<div style="color:var(--text-3);font-size:11px">' + esc(b.pod_uid || '') + '</div></td>' +
+          '<td>' + esc(b.username) + '</td><td>' + spec + '</td><td>' + b.duration_hours + 'h</td>' +
+          '<td>' + (b.deduct_from_hours || 0) + ' → ' + (b.deduct_to_hours || 0) + '</td>' +
+          '<td><b>' + b.amount_yuan + '</b></td><td>' + deductStatusTag(b.status) + '</td><td>#' + (b.billing_run_id || '-') + '</td><td>' + ops + '</td></tr>' +
+          '<tr id="items-' + b.id + '" style="display:none"><td colspan="10" style="background:var(--bg-1)">' + (b.items || []).map(i => esc(i.item_name + (i.option_key ? '(' + i.option_key + ')' : '') + ' ×' + i.quantity + ' × ' + yuan(i.unit_price_fen) + '元/月 = ' + yuan(i.amount_fen) + '元')).join('<br>') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    const totalPages = Math.max(1, Math.ceil(r.count / r.page_size));
+    if (totalPages > 1) $('ddBills').innerHTML += '<div style="margin-top:8px"><button class="btn btn-sm" onclick="loadDeductBills(' + (page - 1) + ')" ' + (page <= 1 ? 'disabled' : '') + '>上一页</button> ' + page + '/' + totalPages + ' <button class="btn btn-sm" onclick="loadDeductBills(' + (page + 1) + ')" ' + (page >= totalPages ? 'disabled' : '') + '>下一页</button></div>';
+  } catch (e) { toast(e.message, 'error'); }
+}
+function showBillItems(id) { const el = $('items-' + id); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
+async function cancelDeductBill(id) {
+  confirmAction('作废扣费单', '作废后该单不再收费，任务扣费指针回退，下次执行扣费会重新计算这段时长。', async () => {
+    try {
+      await api('/billing/api/admin/deduct/bills/cancel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bill_id: id }),
+      });
+      toast('已作废', 'success');
+      loadDeductBills(1);
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+async function doDeductPush(ids) {
+  const all = !ids || !ids.length;
+  confirmAction('推送扣费单', all ? '将当前<b>全部待推送扣费单</b>推送给用户。推送后：用户在"我的账单"确认；超过设置天数未处理将自动扣费。' : '推送选中的扣费单给用户？', async () => {
+    try {
+      const r = await api('/billing/api/admin/deduct/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bill_ids: ids }),
+      });
+      toast('已推送 ' + r.count + ' 张扣费单', 'success');
+      loadDeductBills(1);
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+async function resolveDispute(billId, action) {
+  if (action === 'adjust') {
+    const yuanInput = prompt('请输入新的扣费金额（元）：');
+    if (!yuanInput) return;
+    const fen = Math.round(parseFloat(yuanInput) * 100);
+    if (!fen || fen <= 0) { toast('金额无效', 'error'); return; }
+    try {
+      const r = await api('/billing/api/admin/deduct/dispute/resolve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill_id: billId, action: 'adjust', new_amount_fen: fen }),
+      });
+      toast('已改价，金额 ' + yuan(r.amount_fen) + ' 元，回到待推送', 'success');
+      loadDeductBills(1);
+    } catch (e) { toast(e.message, 'error'); }
+    return;
+  }
+  const desc = action === 'reject' ? '驳回质疑：按原金额直接结算入账并扣费。' : '作废该扣费单：本次不扣费，任务时长指针不占用。';
+  confirmAction(action === 'reject' ? '驳回质疑' : '作废扣费单', desc, async () => {
+    try {
+      const r = await api('/billing/api/admin/deduct/dispute/resolve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill_id: billId, action: action }),
+      });
+      toast('处理完成，当前状态：' + (DEDUCT_STATUS[r.status] || r.status), 'success');
+      loadDeductBills(1);
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+// ================= ④ 白名单 =================
+async function loadWhitelist() {
+  try {
+    const rows = await api('/billing/api/admin/deduct/whitelist');
+    if (!rows.length) { $('dwList').innerHTML = '<div class="empty">暂无白名单，全部用户参与扣费</div>'; return; }
+    const dimName = { user: '用户', org: '部门', cluster: '集群' };
+    $('dwList').innerHTML = '<table class="table"><thead><tr><th>ID</th><th>维度</th><th>值</th><th>备注</th><th>状态</th><th>创建人</th><th>操作</th></tr></thead><tbody>' +
+      rows.map(w => '<tr><td>' + w.id + '</td><td>' + (dimName[w.dimension] || w.dimension) + '</td><td>' + esc(w.value) + '</td><td>' + esc(w.note) + '</td>' +
+        '<td>' + (w.enabled ? tag('success', '启用') : tag('neutral', '停用')) + '</td><td>' + esc(w.created_by) + '</td>' +
+        '<td><button class="btn btn-sm" onclick="toggleWhitelist(' + w.id + ')">' + (w.enabled ? '停用' : '启用') + '</button> <button class="btn btn-sm" onclick="delWhitelist(' + w.id + ')">删除</button></td></tr>').join('') + '</tbody></table>';
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function addWhitelist() {
+  const value = $('dwValue').value.trim();
+  if (!value) { toast('请输入白名单值', 'error'); return; }
+  try {
+    await api('/billing/api/admin/deduct/whitelist/add', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimension: $('dwDim').value, value: value, note: $('dwNote').value }),
+    });
+    toast('白名单已添加', 'success');
+    $('dwValue').value = ''; $('dwNote').value = '';
+    loadWhitelist();
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function toggleWhitelist(id) {
+  try {
+    await api('/billing/api/admin/deduct/whitelist/toggle', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }),
+    });
+    loadWhitelist();
+  } catch (e) { toast(e.message, 'error'); }
+}
+async function delWhitelist(id) {
+  confirmAction('删除白名单', '删除后该条目不再生效，确定删除？', async () => {
+    try {
+      await api('/billing/api/admin/deduct/whitelist/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }),
+      });
+      toast('已删除', 'success');
+      loadWhitelist();
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+// ================= ⑤ 任务快照查询（管理员） =================
+async function loadAdminPods(page) {
+  try {
+    const params = new URLSearchParams({ page: page, page_size: 15 });
+    if ($('phUser').value.trim()) params.set('username', $('phUser').value.trim());
+    if ($('phStatus').value) params.set('status', $('phStatus').value);
+    if ($('phPod').value.trim()) params.set('pod_name', $('phPod').value.trim());
+    if ($('phGpu').value.trim()) params.set('gpu_type', $('phGpu').value.trim());
+    if ($('phCluster').value.trim()) params.set('cluster', $('phCluster').value.trim());
+    const r = await api('/billing/api/admin/pod_history?' + params);
+    if (!r.pods.length) { $('phList').innerHTML = '<div class="empty">暂无匹配的快照记录</div>'; return; }
+    $('phList').innerHTML = '<table class="table"><thead><tr><th>Pod</th><th>用户</th><th>状态</th><th>显卡</th><th>显存(G)</th><th>算力(卡)</th><th>内存(G)</th><th>CPU(核)</th><th>时长(h)</th><th>已扣时长(h)</th><th>扣费次数</th><th>上次扣费</th><th>更新时间</th></tr></thead><tbody>' +
+      r.pods.map(p =>
+        '<tr><td>' + esc(p.pod_name) + '<div style="color:var(--text-3);font-size:11px">' + esc(p.pod_uid || '') + '</div></td>' +
+        '<td>' + esc(p.username) + '</td><td>' + (p.status === 'Running' ? tag('success', p.status) : tag('neutral', p.status)) + '</td>' +
+        '<td>' + esc(p.gpu_type || 'CPU') + '</td><td>' + p.gpu_mem_usage_gb + '</td><td>' + (p.gpu_usage / 100) + '</td>' +
+        '<td>' + p.mem_limit_gb + '</td><td>' + p.cpu_limit + '</td><td>' + p.duration_hours + '</td>' +
+        '<td><b>' + p.billed_duration + '</b></td><td>' + p.billed_count + '</td><td>' + esc(p.last_billed_at || '-') + '</td>' +
+        '<td>' + esc(p.update_at) + '</td></tr>').join('') + '</tbody></table>';
+    const totalPages = Math.max(1, Math.ceil(r.count / r.page_size));
+    if (totalPages > 1) {
+      $('phList').innerHTML += '<div style="margin-top:8px"><button class="btn btn-sm" onclick="loadAdminPods(' + (page - 1) + ')" ' + (page <= 1 ? 'disabled' : '') + '>上一页</button> ' + page + '/' + totalPages + ' <button class="btn btn-sm" onclick="loadAdminPods(' + (page + 1) + ')" ' + (page >= totalPages ? 'disabled' : '') + '>下一页</button></div>';
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ================= 启动 =================
+loadDeductConfig();
+loadDeductRuns();
+loadDeductBills(1);
+loadWhitelist();
+</script>
+</body>
+</html>

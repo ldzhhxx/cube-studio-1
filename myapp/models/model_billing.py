@@ -187,6 +187,10 @@ class PodInfoHistoryV2(Model, MyappModelBase):
     waiting_time = Column(String(255), default=None)           # pending时长
     update_at = Column(DateTime, default=None)                 # 更新时间戳
     details = Column(Text, default=None)                       # 详情
+    # 扣费状态（指针只写在最新快照行上；读取用 MAX 兜底，新增快照行不会丢失指针）
+    billed_duration = Column(Float, default=None)              # 该任务累计已扣费时长（小时）
+    billed_count = Column(Integer, default=0)                  # 已扣费次数
+    last_billed_at = Column(DateTime, default=None)            # 上次扣费时间
 
     def __repr__(self):
         return '%s:%s' % (self.pod_name, self.status)
