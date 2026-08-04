@@ -602,6 +602,10 @@ class CeleryConfig(object):
 		"task_check_pod_terminating": {
             "task": "task.check_pod_terminating",
             'schedule': crontab(minute='*/10'),
+        },
+		'task_billing_deduct_check': {
+            'task': 'task.billing_deduct_check',   # 扣费检查：超时自动扣费 + 按周期定时扣费（周期在计费控制台配置）
+            'schedule': crontab(minute='*/10'),
         }
     }
 

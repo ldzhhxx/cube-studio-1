@@ -343,6 +343,9 @@ def auto_settle_scan():
     count = 0
     for b in bills:
         try:
+            b.status = 'agreed'          # 超时未处理视为自动同意
+            b.updated_on = datetime.datetime.now()
+            db.session.flush()
             settle_bill(b, operator='auto_settle')
             count += 1
         except Exception as e:

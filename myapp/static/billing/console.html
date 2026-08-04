@@ -799,6 +799,7 @@ POST /billing/api/calc              <span class="cmt"># 算价预览 {"resources
       <label>最低付费时长(分钟) <input class="input" id="dcMin" style="width:90px"></label>
       <label>月→小时折算(小时/月) <input class="input" id="dcMonth" style="width:90px"></label>
       <label>超时自动扣费(天) <input class="input" id="dcDays" style="width:90px"></label>
+      <label>定时扣费周期(分钟,0=关) <input class="input" id="dcInterval" style="width:90px" title="0=关闭，1440=每天，10080=每周"></label>
       <label>GPU兜底型号 <input class="input" id="dcGpu" style="width:90px"></label>
       <label>功能开关 <select class="select" id="dcEnabled"><option value="1">开启</option><option value="0">关闭</option></select></label>
       <button class="btn btn-primary btn-sm" onclick="saveDeductConfig()">保存配置</button>
@@ -1966,6 +1967,7 @@ async function loadDeductConfig() {
     $('dcMin').value = c.min_duration_minutes || 10;
     $('dcMonth').value = c.month_hours || 720;
     $('dcDays').value = c.auto_settle_days || 7;
+    $('dcInterval').value = c.schedule_interval_minutes || 0;
     $('dcGpu').value = c.gpu_fallback || 'L20';
     $('dcEnabled').value = (c.enabled === '0' || c.enabled === 0) ? '0' : '1';
   } catch (e) { toast(e.message, 'error'); }
@@ -1979,6 +1981,7 @@ async function saveDeductConfig() {
         min_duration_minutes: $('dcMin').value,
         month_hours: $('dcMonth').value,
         auto_settle_days: $('dcDays').value,
+        schedule_interval_minutes: $('dcInterval').value,
         gpu_fallback: $('dcGpu').value,
         enabled: $('dcEnabled').value,
       }),
