@@ -1,0 +1,9 @@
+{
+  "name": "cube-studio",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "forwardPorts": [80],
+  "portsAttributes": {
+    "80": { "label": "cube-studio web (nginx)", "visibility": "public" }
+  },
+  "postStartCommand": "bash .devcontainer/poststart.sh"
+}

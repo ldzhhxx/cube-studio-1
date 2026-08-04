@@ -1,14 +1,29 @@
 
 # 本地调试
 
-## deploy mysql
+## 快速启动（推荐，一条命令拉起全套服务）
+
+前提：本机已安装 docker + docker compose v2（GitHub Codespace 已内置，开箱即用）
+
+```bash
+cd install/docker
+docker compose up -d
+```
+
+一条命令启动全部服务：`redis` + `mysql` + `myapp` + `frontend`，首次启动自动完成：
+
+- MySQL 初始化（数据持久化在 `install/docker/data/mysql`，已 gitignore）
+- 后端建库建表、创建 admin 账号（**admin / admin**）、初始化演示数据
+- 依赖顺序由 `depends_on` + MySQL 健康检查保证：mysql 就绪 → myapp 初始化 → frontend 的 nginx 启动（不会再出现 nginx 找不到 myapp 的启动报错）
+
+访问：`http://localhost/frontend/`（账号 admin / admin）
+
+**GitHub Codespace**：`.devcontainer/devcontainer.json` 已配置 80 端口自动公开转发，容器启动后自动执行 `docker compose up -d`，直接访问 `https://<codespace名>-80.app.github.dev/frontend/` 即可，无需任何手工步骤。
+
+## 手动部署 mysql（仅当不使用 docker-compose 时）
 
 ```
-linux
 docker run --network host --restart always --name mysql -e MYSQL_ROOT_PASSWORD=admin -e MYSQL_ALLOW_EMPTY_PASSWORD=true -v $PWD/docker-add-file/mysqld.cnf:/etc/mysql/mysql.conf.d/mysqld.cnf -d mysql:5.7
-mac
-docker run -p 3306:3306 --restart always --name mysql -e MYSQL_ROOT_PASSWORD=admin -d mysql:5.7
-
 ```
 进入mysql，创建kubeflow数据库
 ```
